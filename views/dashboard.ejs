@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dom Databank</title>
+  <link rel="stylesheet" href="/css/pdp-theme.css">
+</head>
+<body>
+
+<% const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : []; %>
+<% const safeSelectedFolderName = (typeof selectedFolderName !== 'undefined' && selectedFolderName) ? selectedFolderName : null; %>
+
+<!-- ================= HEADER ================= -->
+<header>
+  <div class="header-left"></div>
+
+  <div class="header-title">
+    <h1>DOM DATABANK</h1>
+  </div>
+
+  <div class="header-right">
+    <img src="/images/pdp-logo.png" alt="PDP Logo">
+
+    <div class="user-info">
+      <strong><%= user.fullname %></strong><br>
+      <small><%= user.role.toUpperCase() %></small>
+    </div>
+
+    <form action="/logout" method="GET">
+      <button class="logout-btn">Logout</button>
+    </form>
+  </div>
+</header>
+
+<!-- ================= MAIN CONTENT ================= -->
+<div class="container">
+  <div class="grid">
+
+    <!-- LEFT COLUMN -->
+    <div class="card">
+      <% if (user.role === 'admin') { %>
+        <button class="action-btn" onclick="openModal('userModal')">
+          User Management
+        </button>
+
+        <button class="action-btn" onclick="openModal('logsModal')">
+          Activity Logs
+        </button>
+      <% } %>
+
+      <button class="action-btn" onclick="openModal('folderModal')">
+        Folder Management
+      </button>
+
+      <button class="action-btn red" onclick="openModal('fileModal')">
+        File Management
+      </button>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="card">
+
+      <!-- SEARCH BAR -->
+      <form method="GET" action="/files/search" class="search-bar">
+        <input type="text" name="keyword" placeholder="Search file name">
+        <input type="date" name="date">
+        <button type="submit">Search</button>
+      </form>
+
+      <!-- Folder view indicator -->
+      <% if (safeSelectedFolderName) { %>
+        <div class="folder-banner">
+          <strong>Viewing Folder:</strong> <%= safeSelectedFolderName %>
+          <a class="back-link" href="/dashboard">Back to All Files</a>
+        </div>
+      <% } %>
+
+      <h3>Recent Files</h3>
+
+      <table>
+        <tr>
+          <th>File Name</th>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Action</th>
+        </tr>
+
+        <% files.forEach(f => { 
+          const d = new Date(f.uploaded_at);
+
+          // normalize Windows paths to URL paths
+          const rawPath = (f.filepath || '');
+          const fp = rawPath
+            .replace(/\\/g, '/')
+            .replace('uploadsdocuments', 'uploads/documents');
+
+          const fileUrl = fp.startsWith('/') ? fp : '/' + fp;
+        %>
+        <tr>
+          <td><%= f.filename %></td>
+          <td><%= d.toLocaleDateString() %></td>
+          <td><%= d.toLocaleTimeString() %></td>
+          <td>
+            <a href="<%= fileUrl %>" target="_blank">Preview</a> |
+            <a href="#" onclick="printFile('<%= fp %>'); return false;">Print</a>
+
+            <% if (user.role === 'admin') { %>
+              | <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
+                  <button style="background:none;border:none;color:red;cursor:pointer;">
+                    Delete
+                  </button>
+                </form>
+            <% } %>
+          </td>
+        </tr>
+        <% }) %>
+      </table>
+
+    </div>
+  </div>
+</div>
+
+<!-- ================= USER MANAGEMENT MODAL ================= -->
+<div id="userModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal('userModal')">&times;</span>
+    <h3>User Management</h3>
+
+    <form method="POST" action="/admin/create-user">
+      <input name="fullname" placeholder="Full Name" required>
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <select name="role">
+        <option value="user">User</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button class="action-btn">Add User</button>
+    </form>
+  </div>
+</div>
+
+<!-- ================= FILE MANAGEMENT MODAL ================= -->
+<div id="fileModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal('fileModal')">&times;</span>
+    <h3>File Management</h3>
+
+    <form method="POST" action="/folder">
+      <input name="name" placeholder="Folder Name" required>
+      <button class="action-btn">Create Folder</button>
+    </form>
+
+    <form method="POST" action="/upload" enctype="multipart/form-data">
+      <select name="folder_id" required>
+        <% folders.forEach(f => { %>
+          <option value="<%= f.id %>"><%= f.name %></option>
+        <% }) %>
+      </select>
+      <input type="file" name="document" required>
+      <button class="action-btn red">Upload File</button>
+    </form>
+  </div>
+</div>
+
+<!-- ================= FOLDER MANAGEMENT MODAL ================= -->
+<div id="folderModal" class="modal">
+  <div class="modal-content modal-wide">
+    <span class="close" onclick="closeModal('folderModal')">&times;</span>
+    <h3>Folder Management</h3>
+
+    <div style="max-height: 420px; overflow:auto; margin-top:10px;">
+      <table>
+        <tr>
+          <th>Folder Name</th>
+          <th>Action</th>
+        </tr>
+
+        <% folders.forEach(folder => { %>
+          <tr>
+            <td><%= folder.name %></td>
+            <td>
+              <a href="/files/folder/<%= folder.id %>">Open</a>
+            </td>
+          </tr>
+        <% }) %>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ACTIVITY LOGS MODAL (ADMIN ONLY) ================= -->
+<div id="logsModal" class="modal">
+  <div class="modal-content modal-wide">
+    <span class="close" onclick="closeModal('logsModal')">&times;</span>
+    <h3>Activity Logs</h3>
+
+    <input id="logFilter" type="text" placeholder="Filter logs by user/action..." onkeyup="filterLogs()" />
+
+    <div style="max-height: 420px; overflow:auto; margin-top:10px;">
+      <table id="logsTable">
+        <tr>
+          <th>User</th>
+          <th>Action</th>
+          <th>Date</th>
+          <th>Time</th>
+        </tr>
+
+        <% safeLogs.forEach(l => { 
+          const dt = new Date(l.created_at);
+        %>
+        <tr>
+          <td>
+            <%= l.fullname ? l.fullname : 'Unknown' %>
+            <% if (l.email) { %><br><small><%= l.email %></small><% } %>
+          </td>
+          <td><%= l.action %></td>
+          <td><%= dt.toLocaleDateString() %></td>
+          <td><%= dt.toLocaleTimeString() %></td>
+        </tr>
+        <% }) %>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FOOTER ================= -->
+<footer>
+  Directorate of Organization and Mobilization © 2026
+</footer>
+
+<!-- ================= SCRIPTS ================= -->
+<script>
+function openModal(id) {
+  document.getElementById(id).style.display = 'block';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+function filterLogs() {
+  const input = document.getElementById('logFilter');
+  const filter = input.value.toLowerCase();
+  const table = document.getElementById('logsTable');
+  const rows = table.getElementsByTagName('tr');
+
+  for (let i = 1; i < rows.length; i++) {
+    const rowText = rows[i].innerText.toLowerCase();
+    rows[i].style.display = rowText.includes(filter) ? '' : 'none';
+  }
+}
+
+function printFile(filePath) {
+  const existing = document.getElementById('print-iframe');
+  if (existing) existing.remove();
+
+  let normalized = (filePath || '').replace(/\\/g, '/');
+  normalized = normalized.replace('uploadsdocuments', 'uploads/documents');
+  if (!normalized.startsWith('/')) normalized = '/' + normalized;
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'print-iframe';
+  iframe.style.display = 'none';
+  iframe.src = normalized;
+
+  document.body.appendChild(iframe);
+
+  iframe.onload = function () {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      window.open(normalized, '_blank');
+    }
+  };
+}
+</script>
+
+</body>
+</html>

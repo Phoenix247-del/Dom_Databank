@@ -1,0 +1,265 @@
+/* ================= RESET ================= */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f4f4f4;
+}
+
+/* ================= HEADER ================= */
+header {
+  background: #ffffff;
+  padding: 15px 20px;
+  border-bottom: 2px solid #006400;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.header-left { width: 150px; }
+
+.header-title { flex: 1; text-align: center; }
+
+.header-title h1 {
+  margin: 0;
+  color: #006400;
+  font-size: 26px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  word-break: break-word;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-right img { height: 40px; }
+
+.user-info {
+  text-align: right;
+  font-size: 13px;
+  color: #006400;
+}
+
+.logout-btn {
+  background: #C00000;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 3px;
+}
+
+/* ================= MAIN LAYOUT ================= */
+.container { padding: 20px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 3fr;
+  gap: 20px;
+}
+
+/* ================= CARDS ================= */
+.card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 6px;
+  box-shadow: 0 0 5px rgba(0,0,0,0.1);
+}
+
+/* ================= BUTTONS ================= */
+.action-btn {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #006400;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  border-radius: 6px;
+}
+
+.action-btn.red { background: #C00000; }
+.action-btn:hover { opacity: 0.95; }
+
+/* ================= SEARCH BAR ================= */
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.search-bar input {
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.search-bar button {
+  background: #006400;
+  color: #ffffff;
+  border: none;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+/* ================= FOLDER BANNER ================= */
+.folder-banner {
+  background: #f0fff0;
+  border: 1px solid #006400;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  color: #006400;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.back-link {
+  text-decoration: none;
+  color: #C00000;
+  font-weight: bold;
+}
+
+.back-link:hover { text-decoration: underline; }
+
+/* ================= TABLE ================= */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table th,
+table td {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  font-size: 14px;
+  vertical-align: top;
+}
+
+table th { background: #f0f0f0; text-align: left; }
+
+table a {
+  color: #006400;
+  text-decoration: none;
+}
+
+table a:hover { text-decoration: underline; }
+
+/* Make tables scroll on small screens */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ================= MODALS ================= */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0; top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  padding: 14px;
+}
+
+.modal-content {
+  background: #ffffff;
+  margin: 6% auto;
+  padding: 20px;
+  width: 420px;
+  max-width: 100%;
+  border-radius: 8px;
+  position: relative;
+}
+
+.modal-wide { width: 820px; max-width: 100%; }
+
+.modal-content h3 {
+  margin-top: 0;
+  color: #006400;
+}
+
+.modal-content input,
+.modal-content select {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.close {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  cursor: pointer;
+  font-size: 22px;
+  color: #900;
+}
+
+#logFilter {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  border-radius: 6px;
+}
+
+/* ================= FOOTER ================= */
+footer {
+  background: #ffffff;
+  border-top: 2px solid #006400;
+  text-align: center;
+  padding: 12px;
+  font-size: 13px;
+  color: #006400;
+  margin-top: 20px;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+  .header-left { display: none; }
+  .header-title { text-align: left; }
+  .header-title h1 { font-size: 20px; letter-spacing: 1px; }
+  .header-right { width: 100%; justify-content: space-between; }
+  .card { padding: 16px; }
+}
+
+@media (max-width: 480px) {
+  .container { padding: 12px; }
+
+  .header-right img { height: 34px; }
+  .user-info { font-size: 12px; }
+
+  .action-btn { padding: 14px; font-size: 15px; }
+
+  /* Stack search elements fully */
+  .search-bar input,
+  .search-bar button {
+    width: 100%;
+  }
+
+  /* Better tap targets in table actions */
+  table td a {
+    display: inline-block;
+    padding: 6px 0;
+  }
+}
