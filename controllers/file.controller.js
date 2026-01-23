@@ -1,6 +1,4 @@
 const db = require('../config/db');
-const path = require('path');
-const fs = require('fs');
 
 /* ================= UPLOAD FILE ================= */
 exports.uploadFile = (req, res) => {
@@ -11,14 +9,13 @@ exports.uploadFile = (req, res) => {
     return res.status(400).send('No file uploaded');
   }
 
-  // ✅ Normalize stored filepath for URLs
-  let normalizedPath = (file.path || '')
-    .replace(/\\/g, '/')
-    .replace(/^\.\//, '');
+  // ✅ Store a browser-friendly path (served by: app.use('/uploads', express.static(UPLOAD_ROOT)))
+  // This avoids storing absolute disk paths like /var/data/... which break Preview/Print URLs.
+  const webPath = `uploads/documents/${file.filename}`.replace(/\\/g, '/');
 
   db.query(
     'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
-    [folder_id, file.originalname, normalizedPath, req.session.user.id],
+    [folder_id, file.originalname, webPath, req.session.user.id],
     (err) => {
       if (err) {
         console.error('File upload error:', err);

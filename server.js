@@ -8,6 +8,9 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ✅ If you later set cookie.secure=true on Render, enable this:
+// app.set('trust proxy', 1);
+
 // ✅ Session (use env secret for deployment)
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dom_databank_secret',
@@ -16,15 +19,16 @@ app.use(session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false // set to true only when using HTTPS + behind proxy (see note below)
+    secure: false
   }
 }));
 
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ✅ Serve uploaded files from Persistent Disk if configured, else local fallback
+const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(UPLOAD_ROOT));
 
 // View engine
 app.set('view engine', 'ejs');
@@ -41,7 +45,7 @@ app.use('/files', fileRoutes);
 
 app.use('/', require('./routes/folder.routes'));
 
-// ✅ Start server using Render/Vercel assigned port
+// ✅ Start server using Render assigned port
 const PORT = process.env.PORT || 5500;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
