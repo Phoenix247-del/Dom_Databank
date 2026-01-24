@@ -29,7 +29,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false // can set true later if you want strict HTTPS cookies
+      secure: false // set true only if you later enforce HTTPS cookies
     }
   })
 );
@@ -37,15 +37,19 @@ app.use(
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ✅ Uploads path (Railway/Render-friendly)
-// If you later add a volume/storage path, set UPLOAD_ROOT in Railway variables.
-// Otherwise it will use local ./uploads
+// ✅ Uploads path (Railway-friendly)
+// Set UPLOAD_ROOT in Railway variables if using a volume/storage path.
+// Otherwise it falls back to local ./uploads
 const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_ROOT));
 
 // View engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
+/* ✅ Health + Root routes (important for Railway) */
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/', (req, res) => res.redirect('/login'));
 
 // ROUTES
 app.use('/', require('./routes/auth.routes'));
