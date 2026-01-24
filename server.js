@@ -52,10 +52,10 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 /* ================= HEALTH ROUTES ================= */
-// ✅ Make root return 200 (helps default health checks)
+// ✅ Root returns 200 (helps default platform health checks)
 app.get('/', (req, res) => res.status(200).send('Dom Databank is running'));
 
-// ✅ Dedicated health check
+// ✅ Dedicated health endpoint
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 /* ================= ROUTES ================= */
@@ -80,6 +80,25 @@ process.on('uncaughtException', (err) => {
 /* ================= START SERVER ================= */
 const PORT = Number(process.env.PORT || 5500);
 
-app.listen(PORT, '0.0.0.0', () => {
+// IMPORTANT: bind to 0.0.0.0 so Railway can route traffic
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+/* ================= GRACEFUL SHUTDOWN (fixes scary SIGTERM npm error) ================= */
+function shutdown(signal) {
+  console.log(`🛑 Received ${signal}. Closing server gracefully...`);
+  server.close(() => {
+    console.log('✅ HTTP server closed. Exiting cleanly.');
+    process.exit(0); // Exit 0 so npm doesn't show it as an error
+  });
+
+  // Force exit if something is hanging
+  setTimeout(() => {
+    console.log('⚠️ Forced shutdown after timeout.');
+    process.exit(0);
+  }, 5000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
