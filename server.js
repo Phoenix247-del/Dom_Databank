@@ -1,32 +1,45 @@
+// server.js
+
+// Load .env only for local development
+if (!process.env.RAILWAY_ENVIRONMENT && process.env.NODE_ENV !== 'production') {
+  try {
+    require('dotenv').config();
+  } catch (_) {}
+}
+
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
 
 const app = express();
 
+// If you later set secure cookies behind Railway HTTPS proxy, keep this:
+app.set('trust proxy', 1);
+
 // Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ If you later set cookie.secure=true on Render, enable this:
-// app.set('trust proxy', 1);
-
 // ✅ Session (use env secret for deployment)
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'dom_databank_secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: false
-  }
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'dom_databank_secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false // can set true later if you want strict HTTPS cookies
+    }
+  })
+);
 
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ✅ Serve uploaded files from Persistent Disk if configured, else local fallback
+// ✅ Uploads path (Railway/Render-friendly)
+// If you later add a volume/storage path, set UPLOAD_ROOT in Railway variables.
+// Otherwise it will use local ./uploads
 const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_ROOT));
 
@@ -38,14 +51,14 @@ app.set('views', path.join(__dirname, 'views'));
 app.use('/', require('./routes/auth.routes'));
 app.use('/', require('./routes/admin.routes'));
 
-// mount file routes at "/" (keep existing behavior) AND "/files" (enable /files/search)
+// ✅ File routes: keep existing behaviour AND support /files/search
 const fileRoutes = require('./routes/file.routes');
 app.use('/', fileRoutes);
 app.use('/files', fileRoutes);
 
 app.use('/', require('./routes/folder.routes'));
 
-// ✅ Start server using Render assigned port
+// ✅ Start server using Railway assigned PORT
 const PORT = process.env.PORT || 5500;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
