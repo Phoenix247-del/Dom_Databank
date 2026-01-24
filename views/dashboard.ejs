@@ -11,6 +11,26 @@
 <% const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : []; %>
 <% const safeSelectedFolderName = (typeof selectedFolderName !== 'undefined' && selectedFolderName) ? selectedFolderName : null; %>
 
+<%
+  function toPublicUrl(fp) {
+    if (!fp) return '#';
+    const p = String(fp).replace(/\\/g, '/');
+
+    // Already stored as uploads/documents/...
+    if (p.startsWith('uploads/')) return '/' + p;
+
+    // Stored as /data/uploads/documents/... or similar
+    const idx = p.indexOf('/uploads/');
+    if (idx !== -1) return p.slice(idx);
+
+    // Stored as documents/...
+    if (p.startsWith('documents/')) return '/uploads/' + p;
+
+    // fallback
+    return '/uploads/' + p.replace(/^\/+/, '');
+  }
+%>
+
 <!-- ================= HEADER ================= -->
 <header>
   <div class="header-left"></div>
@@ -86,16 +106,9 @@
           <th>Action</th>
         </tr>
 
-        <% files.forEach(f => { 
+        <% (files || []).forEach(f => { 
           const d = new Date(f.uploaded_at);
-
-          // normalize Windows paths to URL paths
-          const rawPath = (f.filepath || '');
-          const fp = rawPath
-            .replace(/\\/g, '/')
-            .replace('uploadsdocuments', 'uploads/documents');
-
-          const fileUrl = fp.startsWith('/') ? fp : '/' + fp;
+          const fileUrl = toPublicUrl(f.filepath);
         %>
         <tr>
           <td><%= f.filename %></td>
@@ -103,7 +116,7 @@
           <td><%= d.toLocaleTimeString() %></td>
           <td>
             <a href="<%= fileUrl %>" target="_blank">Preview</a> |
-            <a href="#" onclick="printFile('<%= fp %>'); return false;">Print</a>
+            <a href="#" onclick="printFile('<%= fileUrl %>'); return false;">Print</a>
 
             <% if (user.role === 'admin') { %>
               | <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
@@ -153,7 +166,7 @@
 
     <form method="POST" action="/upload" enctype="multipart/form-data">
       <select name="folder_id" required>
-        <% folders.forEach(f => { %>
+        <% (folders || []).forEach(f => { %>
           <option value="<%= f.id %>"><%= f.name %></option>
         <% }) %>
       </select>
@@ -176,7 +189,7 @@
           <th>Action</th>
         </tr>
 
-        <% folders.forEach(folder => { %>
+        <% (folders || []).forEach(folder => { %>
           <tr>
             <td><%= folder.name %></td>
             <td>
@@ -252,18 +265,14 @@ function filterLogs() {
   }
 }
 
-function printFile(filePath) {
+function printFile(url) {
   const existing = document.getElementById('print-iframe');
   if (existing) existing.remove();
-
-  let normalized = (filePath || '').replace(/\\/g, '/');
-  normalized = normalized.replace('uploadsdocuments', 'uploads/documents');
-  if (!normalized.startsWith('/')) normalized = '/' + normalized;
 
   const iframe = document.createElement('iframe');
   iframe.id = 'print-iframe';
   iframe.style.display = 'none';
-  iframe.src = normalized;
+  iframe.src = url;
 
   document.body.appendChild(iframe);
 
@@ -272,7 +281,7 @@ function printFile(filePath) {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     } catch (e) {
-      window.open(normalized, '_blank');
+      window.open(url, '_blank');
     }
   };
 }

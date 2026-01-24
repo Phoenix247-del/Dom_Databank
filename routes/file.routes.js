@@ -1,24 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
 const { isAuthenticated, isAdmin } = require('../middleware/auth.middleware');
 const logger = require('../middleware/logger.middleware');
 const controller = require('../controllers/file.controller');
 
+/* ================= UPLOAD PATH (PERSISTENT STORAGE READY) =================
+   - Local dev (no env): ./uploads/documents
+   - Railway volume: set UPLOAD_ROOT=/data/uploads and/or UPLOAD_DOCS=/data/uploads/documents
+*/
+const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(__dirname, '..', 'uploads');
+const UPLOAD_DOCS = process.env.UPLOAD_DOCS || path.join(UPLOAD_ROOT, 'documents');
+
+// Ensure folders exist
+fs.mkdirSync(UPLOAD_DOCS, { recursive: true });
+
 /* ================= MULTER CONFIG ================= */
-// ✅ Use persistent disk path on Render if provided, else local fallback
-const DOCS_DIR =
-  process.env.UPLOAD_DOCS || path.join(__dirname, '..', 'uploads', 'documents');
-
-// ✅ Ensure upload folder exists (important for Render + local)
-fs.mkdirSync(DOCS_DIR, { recursive: true });
-
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, DOCS_DIR),
+  destination: (req, file, cb) => {
+    cb(null, UPLOAD_DOCS);
+  },
   filename: (req, file, cb) => {
+    // keep original name but prepend timestamp to avoid collisions
     cb(null, Date.now() + '_' + file.originalname);
   }
 });
@@ -34,7 +40,10 @@ router.post(
   controller.uploadFile
 );
 
-/* ================= DELETE FILE (ADMIN ONLY) ================= */
+/* ================= DELETE FILE (ADMIN ONLY) =================
+   NOTE: This route deletes DB record only.
+   If you want to also delete the physical file, tell me and I’ll add it safely.
+*/
 router.delete(
   '/file/:id',
   isAuthenticated,
@@ -42,7 +51,11 @@ router.delete(
   logger('Deleted a file'),
   (req, res) => {
     const db = require('../config/db');
-    db.query('DELETE FROM files WHERE id = ?', [req.params.id], () => {
+    db.query('DELETE FROM files WHERE id = ?', [req.params.id], (err) => {
+      if (err) {
+        console.error('Delete DB record error:', err);
+        return res.status(500).send('Delete failed');
+      }
       res.sendStatus(200);
     });
   }
@@ -52,7 +65,6 @@ router.delete(
 router.get('/search', isAuthenticated, controller.searchFiles);
 
 /* ================= LIST FILES BY FOLDER ================= */
-/* Works for BOTH admin and users */
 router.get('/folder/:folderId', isAuthenticated, controller.listFilesByFolder);
 
 module.exports = router;
