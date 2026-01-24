@@ -1,6 +1,6 @@
 // server.js
 
-// Load .env only for local development
+// Load .env only in local development
 if (!process.env.RAILWAY_ENVIRONMENT && process.env.NODE_ENV !== 'production') {
   try {
     require('dotenv').config();
@@ -10,17 +10,21 @@ if (!process.env.RAILWAY_ENVIRONMENT && process.env.NODE_ENV !== 'production') {
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 
-// If you later set secure cookies behind Railway HTTPS proxy, keep this:
+/* ================= MIDDLEWARE ================= */
+
+// Required when running behind Railway proxy
 app.set('trust proxy', 1);
 
 // Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Session (use env secret for deployment)
+/* ================= SESSION ================= */
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'dom_databank_secret',
@@ -29,41 +33,70 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false // set true only if you later enforce HTTPS cookies
+      secure: false // keep false unless you enable HTTPS-only cookies
     }
   })
 );
 
-// Static files
+/* ================= STATIC FILES ================= */
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ✅ Uploads path (Railway-friendly)
-// Set UPLOAD_ROOT in Railway variables if using a volume/storage path.
-// Otherwise it falls back to local ./uploads
+/* ================= UPLOADS (PERSISTENT STORAGE) ================= */
+
+// Railway volume mount (recommended): /data
 const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(__dirname, 'uploads');
+const DOCS_DIR = path.join(UPLOAD_ROOT, 'documents');
+
+// Ensure folders exist (important on fresh deploy)
+if (!fs.existsSync(DOCS_DIR)) {
+  fs.mkdirSync(DOCS_DIR, { recursive: true });
+}
+
+// Serve uploaded files
 app.use('/uploads', express.static(UPLOAD_ROOT));
 
-// View engine
+/* ================= VIEW ENGINE ================= */
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-/* ✅ Health + Root routes (important for Railway) */
+/* ================= HEALTH ROUTES ================= */
+
+// Railway health check
 app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// Root redirect
 app.get('/', (req, res) => res.redirect('/login'));
 
-// ROUTES
+/* ================= ROUTES ================= */
+
 app.use('/', require('./routes/auth.routes'));
 app.use('/', require('./routes/admin.routes'));
 
-// ✅ File routes: keep existing behaviour AND support /files/search
+// File routes
 const fileRoutes = require('./routes/file.routes');
 app.use('/', fileRoutes);
 app.use('/files', fileRoutes);
 
+// Folder routes
 app.use('/', require('./routes/folder.routes'));
 
-// ✅ Start server using Railway assigned PORT
-const PORT = process.env.PORT || 5500;
-app.listen(PORT, () => {
+/* ================= CRASH SAFETY ================= */
+
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+});
+
+/* ================= START SERVER ================= */
+
+const PORT = Number(process.env.PORT || 5500);
+
+// IMPORTANT: bind to 0.0.0.0 so Railway detects open port
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
