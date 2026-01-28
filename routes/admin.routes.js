@@ -1,8 +1,20 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const bcrypt = require('bcrypt');
+
 const db = require('../config/db');
 const { isAuthenticated, isAdmin } = require('../middleware/auth.middleware');
-const adminController = require('../controllers/admin.controller');
+
+/* ================= Helpers ================= */
+function redirectSuccess(res, message) {
+  return res.redirect('/dashboard?success=' + encodeURIComponent(message));
+}
+
+function redirectError(res, message) {
+  return res.redirect('/dashboard?error=' + encodeURIComponent(message));
+}
 
 /**
  * DASHBOARD:
@@ -122,19 +134,64 @@ router.get('/dashboard', isAuthenticated, (req, res) => {
   });
 });
 
-// ================= ADMIN: CREATE USER =================
-router.post('/admin/create-user', isAuthenticated, isAdmin, adminController.createUser);
+/* ================= ADMIN: CREATE USER ================= */
+router.post('/admin/create-user', isAuthenticated, isAdmin, async (req, res) => {
+  try {
+    const fullname = (req.body.fullname || '').trim();
+    const email = (req.body.email || '').trim().toLowerCase();
+    const password = (req.body.password || '').trim();
+    const role = (req.body.role || 'user').trim();
 
-// ================= ADMIN: UPDATE USER (role + privileges + folder assignments) =================
+    if (!fullname || !email || !password) {
+      return redirectError(res, 'Please fill all fields.');
+    }
+
+    // check duplicate email
+    db.query('SELECT id FROM users WHERE email = ?', [email], async (err, rows) => {
+      if (err) {
+        console.error('Create user check error:', err);
+        return redirectError(res, 'Could not create user (DB error).');
+      }
+
+      if (rows && rows.length) {
+        return redirectError(res, 'This email already exists.');
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+
+      // default privileges for new users (admin bypasses anyway)
+      const can_search = 0;
+      const can_preview = 0;
+      const can_print = 0;
+
+      db.query(
+        'INSERT INTO users (fullname, email, password, role, can_search, can_preview, can_print) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [fullname, email, hash, role, can_search, can_preview, can_print],
+        (err2) => {
+          if (err2) {
+            console.error('Create user insert error:', err2);
+            return redirectError(res, 'Could not create user.');
+          }
+          return redirectSuccess(res, 'User created successfully.');
+        }
+      );
+    });
+  } catch (e) {
+    console.error('Create user error:', e);
+    return redirectError(res, 'Could not create user.');
+  }
+});
+
+/* ================= ADMIN: UPDATE USER (role + privileges + folder assignments) ================= */
 router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) => {
   const adminUser = req.session.user;
   const userId = Number(req.params.userId);
 
-  if (!userId) return res.status(400).send('Invalid user');
+  if (!userId) return redirectError(res, 'Invalid user.');
 
   // Prevent editing your own admin privileges/role (recommended)
   if (Number(adminUser.id) === userId) {
-    return res.status(400).send('You cannot modify your own admin privileges here.');
+    return redirectError(res, 'You cannot modify your own admin privileges here.');
   }
 
   const role = (req.body.role || 'user').trim();
@@ -153,23 +210,25 @@ router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) 
     (err) => {
       if (err) {
         console.error('Update user error:', err);
-        return res.status(500).send('Could not update user');
+        return redirectError(res, 'Could not update user.');
       }
 
       // Replace folder assignments
       db.query('DELETE FROM user_folder_access WHERE user_id = ?', [userId], (err2) => {
         if (err2) {
           console.error('Delete folder access error:', err2);
-          return res.status(500).send('Could not update folder assignments');
+          return redirectError(res, 'Could not update folder assignments.');
         }
 
         // If user is admin, folders are not required (admin bypass)
         if (role === 'admin') {
-          return res.redirect('/dashboard');
+          return redirectSuccess(res, 'User updated successfully.');
         }
 
         // No folders assigned => user will see nothing & cannot upload
-        if (!folderIds.length) return res.redirect('/dashboard');
+        if (!folderIds.length) {
+          return redirectSuccess(res, 'User updated (no folders assigned).');
+        }
 
         const values = folderIds.map(fid => [userId, fid]);
         db.query(
@@ -177,7 +236,7 @@ router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) 
           [values],
           (err3) => {
             if (err3) console.error('Insert folder access error:', err3);
-            return res.redirect('/dashboard');
+            return redirectSuccess(res, 'User updated successfully.');
           }
         );
       });
@@ -185,51 +244,98 @@ router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) 
   );
 });
 
-// ================= ADMIN: DELETE USER =================
+/* ================= ADMIN: DELETE USER ================= */
 router.post('/admin/users/:userId/delete', isAuthenticated, isAdmin, (req, res) => {
   const adminUser = req.session.user;
   const userId = Number(req.params.userId);
 
-  if (!userId) return res.status(400).send('Invalid user');
+  if (!userId) return redirectError(res, 'Invalid user.');
 
   // Prevent deleting yourself
   if (Number(adminUser.id) === userId) {
-    return res.status(400).send('You cannot delete your own admin account');
+    return redirectError(res, 'You cannot delete your own admin account.');
   }
 
   // Prevent deleting other admins
-  db.query('SELECT id, role FROM users WHERE id = ? LIMIT 1', [userId], (err, rows) => {
-    if (err || !rows || rows.length === 0) return res.status(404).send('User not found');
-
-    if (rows[0].role === 'admin') {
-      return res.status(400).send('You cannot delete another admin account');
+  db.query('SELECT role FROM users WHERE id = ?', [userId], (err, rows) => {
+    if (err) {
+      console.error('Delete user role check error:', err);
+      return redirectError(res, 'Could not delete user.');
     }
 
+    if (!rows || !rows.length) {
+      return redirectError(res, 'User not found.');
+    }
+
+    if (rows[0].role === 'admin') {
+      return redirectError(res, 'You cannot delete an admin account.');
+    }
+
+    // Remove access rows first
     db.query('DELETE FROM user_folder_access WHERE user_id = ?', [userId], (err2) => {
       if (err2) {
-        console.error('Delete access error:', err2);
-        return res.status(500).send('Could not delete user');
+        console.error('Delete access rows error:', err2);
+        return redirectError(res, 'Could not delete user (access cleanup failed).');
       }
 
+      // Delete user
       db.query('DELETE FROM users WHERE id = ?', [userId], (err3) => {
         if (err3) {
           console.error('Delete user error:', err3);
-          return res.status(500).send('Could not delete user');
+          return redirectError(res, 'Could not delete user.');
         }
-        return res.redirect('/dashboard');
+        return redirectSuccess(res, 'User deleted successfully.');
       });
     });
   });
 });
 
-// ================= ADMIN: DELETE FILE =================
+/* ================= ADMIN: DELETE FILE (used by dashboard.ejs) =================
+   POST /admin/delete-file/:id
+*/
 router.post('/admin/delete-file/:id', isAuthenticated, isAdmin, (req, res) => {
-  db.query('DELETE FROM files WHERE id = ?', [req.params.id], (err) => {
+  const fileId = Number(req.params.id);
+  if (!fileId) return redirectError(res, 'Invalid file.');
+
+  // Get file path, delete DB row, then delete file from disk (best-effort)
+  db.query('SELECT filepath FROM files WHERE id = ?', [fileId], (err, rows) => {
     if (err) {
-      console.error('Delete file error:', err);
-      return res.status(500).send('Could not delete file');
+      console.error('Fetch file error:', err);
+      return redirectError(res, 'Could not delete file.');
     }
-    res.redirect('/dashboard');
+
+    const fp = rows && rows.length ? rows[0].filepath : null;
+
+    db.query('DELETE FROM files WHERE id = ?', [fileId], (err2) => {
+      if (err2) {
+        console.error('Delete file DB error:', err2);
+        return redirectError(res, 'Could not delete file.');
+      }
+
+      // Best-effort local delete (works for local/persistent disk deployments)
+      if (fp) {
+        try {
+          const normalized = String(fp).replace(/\\/g, '/').replace(/^\//, '');
+          // common patterns: uploads/documents/xxx OR ./uploads/documents/xxx
+          const possible = [
+            path.join(process.cwd(), normalized),
+            path.join(process.cwd(), normalized.replace(/^\.\//, '')),
+            path.join(process.cwd(), 'uploads', 'documents', path.basename(normalized))
+          ];
+
+          for (const p of possible) {
+            if (fs.existsSync(p)) {
+              fs.unlinkSync(p);
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn('File unlink warning (ignored):', e.message);
+        }
+      }
+
+      return redirectSuccess(res, 'File deleted successfully.');
+    });
   });
 });
 

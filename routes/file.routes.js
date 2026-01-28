@@ -20,13 +20,8 @@ fs.mkdirSync(UPLOAD_DOCS, { recursive: true });
 
 /* ================= MULTER CONFIG ================= */
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, UPLOAD_DOCS);
-  },
-  filename: (req, file, cb) => {
-    // keep original name but prepend timestamp to avoid collisions
-    cb(null, Date.now() + '_' + file.originalname);
-  }
+  destination: (req, file, cb) => cb(null, UPLOAD_DOCS),
+  filename: (req, file, cb) => cb(null, Date.now() + '_' + file.originalname)
 });
 
 const upload = multer({ storage });
@@ -41,8 +36,8 @@ router.post(
 );
 
 /* ================= DELETE FILE (ADMIN ONLY) =================
-   NOTE: This route deletes DB record only.
-   If you want to also delete the physical file, tell me and I’ll add it safely.
+   (Your dashboard uses /admin/delete-file/:id POST already.)
+   Keep this route for API-style delete if needed.
 */
 router.delete(
   '/file/:id',

@@ -8,6 +8,9 @@
 </head>
 <body>
 
+<!-- ✅ Toast popup container -->
+<div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
+
 <%
   const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : [];
   const safeUsers = (typeof users !== 'undefined' && users) ? users : [];
@@ -79,9 +82,9 @@
       <!-- Search only if allowed -->
       <% if (canSearch) { %>
         <form method="GET" action="/files/search" class="search-bar">
-          <input type="text" name="keyword" placeholder="Search file name">
-          <input type="date" name="date">
-          <button type="submit">Search</button>
+          <input class="search-input search-keyword" type="text" name="keyword" placeholder="Search file name">
+          <input class="search-input search-date" type="date" name="date">
+          <button class="search-btn" type="submit">Search</button>
         </form>
       <% } %>
 
@@ -92,11 +95,12 @@
         </div>
       <% } %>
 
-      <h3>Recent Files</h3>
+      <!-- ✅ Table shifted upward: tighter spacing -->
+      <h3 class="recent-title">Recent Files</h3>
 
       <!-- Best-effort screenshot deterrence applies to non-admin users -->
-      <div id="protectedArea" class="protected-area">
-        <table>
+      <div id="protectedArea" class="protected-area recent-files-area">
+        <table class="recent-table">
           <tr>
             <th>File Name</th>
             <th>Date</th>
@@ -184,8 +188,8 @@
 
       <!-- RIGHT: create + modify SIDE-BY-SIDE -->
       <div class="um-panel">
-
         <div class="um-panel-grid">
+
           <!-- Create user -->
           <div class="sub-card um-create">
             <h4>Create User</h4>
@@ -268,8 +272,8 @@
               window.__SELF_USER_ID__ = "<%= user.id %>";
             </script>
           </div>
-        </div>
 
+        </div>
       </div>
     </div>
 
@@ -367,6 +371,38 @@
 <script>
 function openModal(id) { document.getElementById(id).style.display = 'block'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+/* ================= Toast Popups ================= */
+function showToast(message, type = "success") {
+  const el = document.getElementById("toast");
+  if (!el) return;
+
+  el.className = `toast toast-${type} show`;
+  el.innerText = message;
+
+  clearTimeout(window.__toastTimer__);
+  window.__toastTimer__ = setTimeout(() => {
+    el.classList.remove("show");
+  }, 3500);
+}
+
+// Auto-show toast from URL params: ?success=... or ?error=... or ?info=...
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const success = params.get("success");
+  const error = params.get("error");
+  const info = params.get("info");
+
+  if (success) showToast(success, "success");
+  if (error) showToast(error, "error");
+  if (info) showToast(info, "info");
+
+  // Clean URL (keeps the page clean after showing)
+  if (success || error || info) {
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+})();
 
 // Print helper
 function printFile(url) {

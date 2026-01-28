@@ -22,7 +22,7 @@ header {
 
 .header-title { flex: 1; text-align: center; }
 
-/* ✅ Ensure "DIRECTORATE..." larger than "DATABANK" */
+/* Ensure "DIRECTORATE..." larger than "DATABANK" */
 .title-line1,
 .title-line2 {
   margin: 0;
@@ -154,20 +154,47 @@ th {
   color: white;
 }
 
-/* SEARCH BAR */
+/* ✅ SEARCH BAR (one-row compact layout) */
 .search-bar {
   display: flex;
+  align-items: center;
   gap: 10px;
-  margin-bottom: 15px;
-  flex-wrap: wrap;
+  margin-bottom: 8px; /* tighter so table shifts up */
+  flex-wrap: nowrap;
 }
-.search-bar input, .search-bar button { padding: 10px; }
-.search-bar button {
+
+.search-input {
+  padding: 10px;
+  height: 42px;
+  margin-bottom: 0; /* important: don't push down */
+}
+
+.search-keyword {
+  width: 260px; /* reduced width */
+  max-width: 50vw;
+}
+
+.search-date {
+  width: 170px; /* reduced width */
+}
+
+.search-btn {
+  height: 42px;
+  padding: 0 16px;
   background: #006400;
   border: none;
   color: white;
   cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
 }
+
+/* Recent list spacing (shift upward) */
+.recent-title {
+  margin: 8px 0 10px;
+}
+.recent-files-area { margin-top: 0; }
+.recent-table { margin-top: 0; }
 
 /* Folder banner */
 .folder-banner {
@@ -193,8 +220,6 @@ th {
   left: 0; top: 0;
   width: 100%; height: 100%;
   background: rgba(0,0,0,0.5);
-
-  /* allow page scroll if needed */
   overflow: auto;
   padding: 18px 12px;
 }
@@ -206,8 +231,6 @@ th {
   width: 420px;
   border-radius: 5px;
   position: relative;
-
-  /* fit viewport */
   max-height: calc(100vh - 36px);
   overflow: auto;
 }
@@ -215,7 +238,6 @@ th {
 .modal-wide {
   width: min(1200px, 98vw);
   max-width: 98vw;
-
   max-height: calc(100vh - 36px);
   overflow: auto;
 }
@@ -256,7 +278,6 @@ th {
   overflow: auto;
 }
 
-/* user buttons */
 .um-user {
   width: 100%;
   border: none;
@@ -274,7 +295,7 @@ th {
 
 .um-panel .sub-card h4 { margin: 0 0 10px; }
 
-/* ✅ Create + Modify side-by-side */
+/* Create + Modify side-by-side */
 .um-panel { min-height: 60vh; }
 
 .um-panel-grid {
@@ -290,7 +311,6 @@ th {
   overflow: auto;
 }
 
-/* Modify form layout */
 .um-form .um-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -299,13 +319,12 @@ th {
 
 .um-checks label { display: inline-block; margin-right: 12px; font-size: 13px; }
 
-/* sticky actions for Modify panel */
+/* Sticky actions */
 .um-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-top: 12px;
-
   position: sticky;
   bottom: 0;
   background: #fff;
@@ -329,6 +348,32 @@ footer {
 }
 .protected-area.blurred { filter: blur(10px); }
 
+/* ✅ TOAST POPUPS */
+.toast {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 9999;
+  min-width: 260px;
+  max-width: 420px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity .2s ease, transform .2s ease;
+  pointer-events: none;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast-success { background: #006400; }
+.toast-error   { background: #C00000; }
+.toast-info    { background: #333; }
+
 /* MOBILE */
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
@@ -342,9 +387,15 @@ footer {
   .um-panel-grid { grid-template-columns: 1fr; }
 
   .um-create,
-  .um-modify {
-    max-height: none;
-  }
+  .um-modify { max-height: none; }
 
   .um-form .um-row { grid-template-columns: 1fr; }
+
+  /* Search becomes stacked on mobile */
+  .search-bar { flex-wrap: wrap; }
+  .search-keyword { width: 100%; max-width: 100%; }
+  .search-date { width: 100%; }
+  .search-btn { width: 100%; }
+
+  .toast { left: 12px; right: 12px; max-width: unset; }
 }
