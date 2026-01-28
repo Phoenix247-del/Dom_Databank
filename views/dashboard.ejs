@@ -182,87 +182,92 @@
         </div>
       </div>
 
-      <!-- RIGHT: create + edit panel -->
+      <!-- RIGHT: create + modify SIDE-BY-SIDE -->
       <div class="um-panel">
 
-        <!-- Create user -->
-        <div class="sub-card">
-          <h4>Create User</h4>
-          <form method="POST" action="/admin/create-user">
-            <input name="fullname" placeholder="Full Name" required>
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <select name="role">
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-            <button class="action-btn" type="submit">Add User</button>
-          </form>
-        </div>
+        <div class="um-panel-grid">
+          <!-- Create user -->
+          <div class="sub-card um-create">
+            <h4>Create User</h4>
+            <form method="POST" action="/admin/create-user">
+              <input name="fullname" placeholder="Full Name" required>
+              <input type="email" name="email" placeholder="Email" required>
+              <input type="password" name="password" placeholder="Password" required>
+              <select name="role">
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button class="action-btn" type="submit">Add User</button>
+            </form>
+          </div>
 
-        <!-- Edit selected user -->
-        <div class="sub-card" style="margin-top:12px;">
-          <h4>Modify User</h4>
-          <p class="hint small" id="umHint">Select a user from the list to edit roles, privileges, folders, or delete account.</p>
+          <!-- Modify selected user -->
+          <div class="sub-card um-modify">
+            <h4>Modify User</h4>
+            <p class="hint small" id="umHint">
+              Select a user from the list to edit roles, privileges, folders, or delete account.
+            </p>
 
-          <form id="updateUserForm" method="POST" action="" class="um-form">
-            <div class="um-row">
-              <div>
-                <label class="label">Full Name</label>
-                <input id="umFullname" type="text" disabled>
-              </div>
-              <div>
-                <label class="label">Email</label>
-                <input id="umEmail" type="text" disabled>
-              </div>
-            </div>
-
-            <div class="um-row">
-              <div>
-                <label class="label">Role</label>
-                <select id="umRole" name="role">
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div>
-                <label class="label">Privileges</label>
-                <div class="um-checks">
-                  <label><input id="umCanSearch" type="checkbox" name="can_search"> Search</label>
-                  <label><input id="umCanPreview" type="checkbox" name="can_preview"> Preview</label>
-                  <label><input id="umCanPrint" type="checkbox" name="can_print"> Print</label>
+            <form id="updateUserForm" method="POST" action="" class="um-form">
+              <div class="um-row">
+                <div>
+                  <label class="label">Full Name</label>
+                  <input id="umFullname" type="text" disabled>
+                </div>
+                <div>
+                  <label class="label">Email</label>
+                  <input id="umEmail" type="text" disabled>
                 </div>
               </div>
-            </div>
 
-            <div>
-              <label class="label">Folder Assignment (multi-select)</label>
-              <select id="umFolders" name="folder_ids" multiple size="6" class="folder-multiselect">
-                <% (folders || []).forEach(f => { %>
-                  <option value="<%= f.id %>"><%= f.name %></option>
-                <% }) %>
-              </select>
-              <div class="hint small">
-                Hold Ctrl (Windows) / Cmd (Mac) to select multiple folders.
+              <div class="um-row">
+                <div>
+                  <label class="label">Role</label>
+                  <select id="umRole" name="role">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="label">Privileges</label>
+                  <div class="um-checks">
+                    <label><input id="umCanSearch" type="checkbox" name="can_search"> Search</label>
+                    <label><input id="umCanPreview" type="checkbox" name="can_preview"> Preview</label>
+                    <label><input id="umCanPrint" type="checkbox" name="can_print"> Print</label>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div class="um-actions">
-              <button id="umSaveBtn" class="action-btn small" type="submit" disabled>Save Changes</button>
+              <div>
+                <label class="label">Folder Assignment (multi-select)</label>
+                <select id="umFolders" name="folder_ids" multiple size="8" class="folder-multiselect">
+                  <% (folders || []).forEach(f => { %>
+                    <option value="<%= f.id %>"><%= f.name %></option>
+                  <% }) %>
+                </select>
+                <div class="hint small">
+                  Hold Ctrl (Windows) / Cmd (Mac) to select multiple folders.
+                </div>
+              </div>
 
-              <button id="umDeleteBtn" class="link-danger" type="button" disabled onclick="deleteSelectedUser()">
-                Delete User
-              </button>
-            </div>
+              <div class="um-actions">
+                <button id="umSaveBtn" class="action-btn small" type="submit" disabled>Save Changes</button>
 
-            <input type="hidden" id="umUserId" value="">
-          </form>
+                <button id="umDeleteBtn" class="link-danger" type="button" disabled onclick="deleteSelectedUser()">
+                  Delete User
+                </button>
+              </div>
 
-          <!-- access rows available to JS -->
-          <script>
-            window.__ACCESS_ROWS__ = <%- JSON.stringify(safeAccessRows || []) %>;
-            window.__SELF_USER_ID__ = "<%= user.id %>";
-          </script>
+              <input type="hidden" id="umUserId" value="">
+            </form>
+
+            <!-- access rows available to JS -->
+            <script>
+              window.__ACCESS_ROWS__ = <%- JSON.stringify(safeAccessRows || []) %>;
+              window.__SELF_USER_ID__ = "<%= user.id %>";
+            </script>
+          </div>
         </div>
 
       </div>
