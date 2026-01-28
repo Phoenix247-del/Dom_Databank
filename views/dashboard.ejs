@@ -8,27 +8,14 @@
 </head>
 <body>
 
-<% const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : []; %>
-<% const safeSelectedFolderName = (typeof selectedFolderName !== 'undefined' && selectedFolderName) ? selectedFolderName : null; %>
+<% 
+  const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : []; 
+  const safeSelectedFolderName = (typeof selectedFolderName !== 'undefined' && selectedFolderName) ? selectedFolderName : null;
 
-<%
-  function toPublicUrl(fp) {
-    if (!fp) return '#';
-    const p = String(fp).replace(/\\/g, '/');
-
-    // Already stored as uploads/documents/...
-    if (p.startsWith('uploads/')) return '/' + p;
-
-    // Stored as /data/uploads/documents/... or similar
-    const idx = p.indexOf('/uploads/');
-    if (idx !== -1) return p.slice(idx);
-
-    // Stored as documents/...
-    if (p.startsWith('documents/')) return '/uploads/' + p;
-
-    // fallback
-    return '/uploads/' + p.replace(/^\/+/, '');
-  }
+  // privileges (admin bypass)
+  const canSearch = (user.role === 'admin') || Number(user.can_search);
+  const canPreview = (user.role === 'admin') || Number(user.can_preview);
+  const canPrint = (user.role === 'admin') || Number(user.can_print);
 %>
 
 <!-- ================= HEADER ================= -->
@@ -36,7 +23,8 @@
   <div class="header-left"></div>
 
   <div class="header-title">
-    <h1>DOM DATABANK</h1>
+    <h1 class="title-line1">DIRECTORATE OF ORGANIZATION AND MOBILIZATION</h1>
+    <h1 class="title-line2">DATABANK</h1>
   </div>
 
   <div class="header-right">
@@ -81,12 +69,14 @@
     <!-- RIGHT COLUMN -->
     <div class="card">
 
-      <!-- SEARCH BAR -->
-      <form method="GET" action="/files/search" class="search-bar">
-        <input type="text" name="keyword" placeholder="Search file name">
-        <input type="date" name="date">
-        <button type="submit">Search</button>
-      </form>
+      <!-- SEARCH BAR (privilege controlled) -->
+      <% if (canSearch) { %>
+        <form method="GET" action="/files/search" class="search-bar">
+          <input type="text" name="keyword" placeholder="Search file name">
+          <input type="date" name="date">
+          <button type="submit">Search</button>
+        </form>
+      <% } %>
 
       <!-- Folder view indicator -->
       <% if (safeSelectedFolderName) { %>
@@ -98,37 +88,53 @@
 
       <h3>Recent Files</h3>
 
-      <table>
-        <tr>
-          <th>File Name</th>
-          <th>Date</th>
-          <th>Time</th>
-          <th>Action</th>
-        </tr>
+      <!-- Protected Area (best-effort anti-screenshot for users) -->
+      <div id="protectedArea" class="protected-area">
+        <table>
+          <tr>
+            <th>File Name</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Action</th>
+          </tr>
 
-        <% (files || []).forEach(f => { 
-          const d = new Date(f.uploaded_at);
-          const fileUrl = toPublicUrl(f.filepath);
-        %>
-        <tr>
-          <td><%= f.filename %></td>
-          <td><%= d.toLocaleDateString() %></td>
-          <td><%= d.toLocaleTimeString() %></td>
-          <td>
-            <a href="<%= fileUrl %>" target="_blank">Preview</a> |
-            <a href="#" onclick="printFile('<%= fileUrl %>'); return false;">Print</a>
+          <% (files || []).forEach(f => { 
+            const d = new Date(f.uploaded_at);
 
-            <% if (user.role === 'admin') { %>
-              | <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
-                  <button style="background:none;border:none;color:red;cursor:pointer;">
-                    Delete
-                  </button>
-                </form>
-            <% } %>
-          </td>
-        </tr>
-        <% }) %>
-      </table>
+            const rawPath = (f.filepath || '');
+            const fp = rawPath
+              .replace(/\\/g, '/')
+              .replace('uploadsdocuments', 'uploads/documents');
+
+            const fileUrl = fp.startsWith('/') ? fp : '/' + fp;
+          %>
+          <tr>
+            <td><%= f.filename %></td>
+            <td><%= d.toLocaleDateString() %></td>
+            <td><%= d.toLocaleTimeString() %></td>
+            <td>
+              <% if (canPreview) { %>
+                <a href="<%= fileUrl %>" target="_blank">Preview</a>
+              <% } %>
+
+              <% if (canPreview && canPrint) { %> | <% } %>
+
+              <% if (canPrint) { %>
+                <a href="#" onclick="printFile('<%= fileUrl %>'); return false;">Print</a>
+              <% } %>
+
+              <% if (user.role === 'admin') { %>
+                | <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
+                    <button style="background:none;border:none;color:red;cursor:pointer;">
+                      Delete
+                    </button>
+                  </form>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </table>
+      </div>
 
     </div>
   </div>
@@ -150,6 +156,10 @@
       </select>
       <button class="action-btn">Add User</button>
     </form>
+
+    <p style="margin-top:12px; font-size: 12px;">
+      Folder assignment & privilege toggles are managed from the Admin controls you already added.
+    </p>
   </div>
 </div>
 
@@ -159,12 +169,16 @@
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
-    <form method="POST" action="/folder">
-      <input name="name" placeholder="Folder Name" required>
-      <button class="action-btn">Create Folder</button>
-    </form>
+    <!-- Admin-only folder creation -->
+    <% if (user.role === 'admin') { %>
+      <form method="POST" action="/folder">
+        <input name="name" placeholder="Folder Name" required>
+        <button class="action-btn">Create Folder</button>
+      </form>
+    <% } %>
 
-    <form method="POST" action="/upload" enctype="multipart/form-data">
+    <!-- Upload (folders list already filtered by backend for users) -->
+    <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
       <select name="folder_id" required>
         <% (folders || []).forEach(f => { %>
           <option value="<%= f.id %>"><%= f.name %></option>
@@ -253,30 +267,19 @@ function closeModal(id) {
   document.getElementById(id).style.display = 'none';
 }
 
-function filterLogs() {
-  const input = document.getElementById('logFilter');
-  const filter = input.value.toLowerCase();
-  const table = document.getElementById('logsTable');
-  const rows = table.getElementsByTagName('tr');
-
-  for (let i = 1; i < rows.length; i++) {
-    const rowText = rows[i].innerText.toLowerCase();
-    rows[i].style.display = rowText.includes(filter) ? '' : 'none';
-  }
-}
-
+// Print helper: prints the actual file (best effort).
 function printFile(url) {
-  const existing = document.getElementById('print-iframe');
-  if (existing) existing.remove();
-
   const iframe = document.createElement('iframe');
-  iframe.id = 'print-iframe';
-  iframe.style.display = 'none';
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
   iframe.src = url;
-
   document.body.appendChild(iframe);
 
-  iframe.onload = function () {
+  iframe.onload = function() {
     try {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
@@ -285,6 +288,55 @@ function printFile(url) {
     }
   };
 }
+
+// Filter logs
+function filterLogs() {
+  const input = document.getElementById('logFilter');
+  const filter = (input.value || '').toLowerCase();
+  const table = document.getElementById('logsTable');
+  if (!table) return;
+
+  const rows = table.getElementsByTagName('tr');
+  for (let i = 1; i < rows.length; i++) {
+    const rowText = rows[i].innerText.toLowerCase();
+    rows[i].style.display = rowText.includes(filter) ? '' : 'none';
+  }
+}
+
+// Best-effort anti-screenshot deterrence (ONLY for non-admin users)
+(function () {
+  const isAdmin = "<%= user.role %>" === "admin";
+  if (isAdmin) return;
+
+  const area = document.getElementById('protectedArea');
+  if (!area) return;
+
+  // disable right-click within protected area
+  area.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // disable selection / copying
+  area.style.userSelect = 'none';
+  area.style.webkitUserSelect = 'none';
+
+  // blur on PrintScreen key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'PrintScreen') {
+      area.classList.add('blurred');
+      setTimeout(() => area.classList.remove('blurred'), 2000);
+    }
+
+    // block common copy shortcuts in protected area
+    if ((e.ctrlKey || e.metaKey) && ['c', 'x', 's', 'p'].includes((e.key || '').toLowerCase())) {
+      e.preventDefault();
+    }
+  });
+
+  // blur on tab switch (visibility change)
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) area.classList.add('blurred');
+    else area.classList.remove('blurred');
+  });
+})();
 </script>
 
 </body>

@@ -8,8 +8,7 @@ const path = require('path');
    We store in DB as: uploads/documents/<stored_filename>
 */
 function buildPublicFilePath(file) {
-  // multer gives `file.filename` and `file.path`
-  const storedName = file.filename; // e.g. 1700000000_report.pdf
+  const storedName = file.filename;
   return `uploads/documents/${storedName}`;
 }
 
@@ -33,21 +32,120 @@ function normalizeDbPath(fp) {
   // If stored as documents/xxx
   if (p.startsWith('documents/')) return `uploads/${p}`;
 
-  return p;
+  // Fix legacy bug: uploadsdocuments -> uploads/documents
+  return p.replace('uploadsdocuments', 'uploads/documents');
+}
+
+/* Check if user has access to a folder */
+function userHasFolderAccess(userId, folderId) {
+  return new Promise((resolve) => {
+    db.query(
+      'SELECT 1 FROM user_folder_access WHERE user_id = ? AND folder_id = ? LIMIT 1',
+      [userId, folderId],
+      (err, rows) => {
+        if (err) return resolve(false);
+        resolve(rows && rows.length > 0);
+      }
+    );
+  });
+}
+
+/* Load folders for admin or assigned folders for users */
+function loadFoldersForUser(user, cb) {
+  if (user.role === 'admin') {
+    db.query('SELECT * FROM folders ORDER BY created_at DESC', cb);
+  } else {
+    db.query(
+      `
+        SELECT f.*
+        FROM folders f
+        INNER JOIN user_folder_access ufa
+          ON ufa.folder_id = f.id
+        WHERE ufa.user_id = ?
+        ORDER BY f.created_at DESC
+      `,
+      [user.id],
+      cb
+    );
+  }
+}
+
+/* Load files for admin or assigned folder files for users (optionally filtered) */
+function loadFilesForUser(user, { folderId = null, keyword = '', date = '' }, cb) {
+  let sql = `
+    SELECT fi.*
+    FROM files fi
+  `;
+  const params = [];
+
+  if (user.role !== 'admin') {
+    sql += `
+      INNER JOIN user_folder_access ufa
+        ON ufa.folder_id = fi.folder_id
+       AND ufa.user_id = ?
+    `;
+    params.push(user.id);
+  }
+
+  sql += ' WHERE 1=1 ';
+
+  if (folderId) {
+    sql += ' AND fi.folder_id = ? ';
+    params.push(folderId);
+  }
+
+  if (keyword) {
+    sql += ' AND fi.filename LIKE ? ';
+    params.push(`%${keyword}%`);
+  }
+
+  if (date) {
+    sql += ' AND DATE(fi.uploaded_at) = ? ';
+    params.push(date);
+  }
+
+  sql += ' ORDER BY fi.uploaded_at DESC ';
+
+  db.query(sql, params, cb);
+}
+
+/* Load logs for admin */
+function loadLogs(cb) {
+  const logsSql = `
+    SELECT 
+      al.id,
+      al.action,
+      al.created_at,
+      u.fullname,
+      u.email
+    FROM activity_logs al
+    LEFT JOIN users u ON u.id = al.user_id
+    ORDER BY al.created_at DESC
+    LIMIT 200
+  `;
+  db.query(logsSql, cb);
 }
 
 /* ================= UPLOAD FILE ================= */
-exports.uploadFile = (req, res) => {
-  const { folder_id } = req.body;
+exports.uploadFile = async (req, res) => {
+  const user = req.session.user;
+  const folder_id = Number(req.body.folder_id);
   const file = req.file;
 
   if (!file) return res.status(400).send('No file uploaded');
+  if (!folder_id) return res.status(400).send('Folder is required');
+
+  // ✅ ENFORCE: user can only upload to assigned folders
+  if (user.role !== 'admin') {
+    const ok = await userHasFolderAccess(user.id, folder_id);
+    if (!ok) return res.status(403).send('You are not allowed to upload to this folder');
+  }
 
   const publicPath = buildPublicFilePath(file);
 
   db.query(
     'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
-    [folder_id, file.originalname, publicPath, req.session.user.id],
+    [folder_id, file.originalname, publicPath, user.id],
     (err) => {
       if (err) {
         console.error('File upload error:', err);
@@ -60,57 +158,32 @@ exports.uploadFile = (req, res) => {
 
 /* ================= SEARCH FILES ================= */
 exports.searchFiles = (req, res) => {
-  const { keyword, date } = req.query;
   const user = req.session.user;
+  const keyword = (req.query.keyword || '').trim();
+  const date = (req.query.date || '').trim();
 
-  let sql = 'SELECT * FROM files WHERE 1=1';
-  const params = [];
-
-  if (keyword && keyword.trim() !== '') {
-    sql += ' AND filename LIKE ?';
-    params.push(`%${keyword.trim()}%`);
+  // privilege check (server-side)
+  if (user.role !== 'admin' && !Number(user.can_search)) {
+    return res.status(403).send('You do not have search privilege');
   }
 
-  if (date && date !== '') {
-    sql += ' AND DATE(uploaded_at) = ?';
-    params.push(date);
-  }
-
-  sql += ' ORDER BY uploaded_at DESC';
-
-  db.query(sql, params, (err, files) => {
+  loadFilesForUser(user, { keyword, date }, (err, files) => {
     if (err) {
       console.error('Search error:', err);
       return res.status(500).send('Search failed');
     }
 
-    // normalize filepaths for older records
     files = (files || []).map(f => ({ ...f, filepath: normalizeDbPath(f.filepath) }));
 
-    db.query('SELECT * FROM folders', (err2, folders) => {
+    loadFoldersForUser(user, (err2, folders) => {
       if (err2) {
-        console.error('Folder fetch error:', err2);
+        console.error('Folder load error:', err2);
         return res.status(500).send('Folder load failed');
       }
 
       if (user.role === 'admin') {
-        const logsSql = `
-          SELECT 
-            al.id,
-            al.action,
-            al.created_at,
-            u.fullname,
-            u.email
-          FROM activity_logs al
-          LEFT JOIN users u ON u.id = al.user_id
-          ORDER BY al.created_at DESC
-          LIMIT 200
-        `;
-        db.query(logsSql, (err3, logs) => {
-          if (err3) {
-            console.error('Logs load error:', err3);
-            logs = [];
-          }
+        loadLogs((err3, logs) => {
+          if (err3) logs = [];
           return res.render('dashboard', {
             user,
             files,
@@ -135,69 +208,57 @@ exports.searchFiles = (req, res) => {
 };
 
 /* ================= LIST FILES BY FOLDER ================= */
-exports.listFilesByFolder = (req, res) => {
+exports.listFilesByFolder = async (req, res) => {
   const user = req.session.user;
-  const folderId = req.params.folderId;
+  const folderId = Number(req.params.folderId);
 
-  db.query(
-    'SELECT * FROM files WHERE folder_id = ? ORDER BY uploaded_at DESC',
-    [folderId],
-    (err, files) => {
-      if (err) {
-        console.error('Folder files error:', err);
-        return res.status(500).send('Could not load folder files');
+  if (!folderId) return res.status(400).send('Invalid folder');
+
+  // ✅ ENFORCE: users can only open folders they are assigned to
+  if (user.role !== 'admin') {
+    const ok = await userHasFolderAccess(user.id, folderId);
+    if (!ok) return res.status(403).send('You are not assigned to this folder');
+  }
+
+  loadFilesForUser(user, { folderId }, (err, files) => {
+    if (err) {
+      console.error('Folder files error:', err);
+      return res.status(500).send('Could not load folder files');
+    }
+
+    files = (files || []).map(f => ({ ...f, filepath: normalizeDbPath(f.filepath) }));
+
+    loadFoldersForUser(user, (err2, folders) => {
+      if (err2) {
+        console.error('Folders load error:', err2);
+        return res.status(500).send('Could not load folders');
       }
 
-      files = (files || []).map(f => ({ ...f, filepath: normalizeDbPath(f.filepath) }));
+      const selectedFolder = (folders || []).find(f => String(f.id) === String(folderId));
+      const selectedFolderName = selectedFolder ? selectedFolder.name : 'Selected Folder';
 
-      db.query('SELECT * FROM folders', (err2, folders) => {
-        if (err2) {
-          console.error('Folders load error:', err2);
-          return res.status(500).send('Could not load folders');
-        }
-
-        const selectedFolder = folders.find(f => String(f.id) === String(folderId));
-        const selectedFolderName = selectedFolder ? selectedFolder.name : 'Selected Folder';
-
-        if (user.role === 'admin') {
-          const logsSql = `
-            SELECT 
-              al.id,
-              al.action,
-              al.created_at,
-              u.fullname,
-              u.email
-            FROM activity_logs al
-            LEFT JOIN users u ON u.id = al.user_id
-            ORDER BY al.created_at DESC
-            LIMIT 200
-          `;
-          db.query(logsSql, (err3, logs) => {
-            if (err3) {
-              console.error('Logs load error:', err3);
-              logs = [];
-            }
-
-            return res.render('dashboard', {
-              user,
-              files,
-              folders,
-              logs,
-              selectedFolderId: folderId,
-              selectedFolderName
-            });
-          });
-        } else {
+      if (user.role === 'admin') {
+        loadLogs((err3, logs) => {
+          if (err3) logs = [];
           return res.render('dashboard', {
             user,
             files,
             folders,
-            logs: [],
+            logs,
             selectedFolderId: folderId,
             selectedFolderName
           });
-        }
-      });
-    }
-  );
+        });
+      } else {
+        return res.render('dashboard', {
+          user,
+          files,
+          folders,
+          logs: [],
+          selectedFolderId: folderId,
+          selectedFolderName
+        });
+      }
+    });
+  });
 };

@@ -8,14 +8,45 @@ const adminController = require('../controllers/admin.controller');
 router.get('/dashboard', isAuthenticated, (req, res) => {
   const user = req.session.user;
 
-  // Load files and folders always
-  db.query('SELECT * FROM files ORDER BY uploaded_at DESC', (err, files) => {
+  // ✅ Files: admin sees all, users see only assigned folder files
+  let filesSql = 'SELECT * FROM files ORDER BY uploaded_at DESC';
+  let filesParams = [];
+
+  if (user.role !== 'admin') {
+    filesSql = `
+      SELECT fi.*
+      FROM files fi
+      INNER JOIN user_folder_access ufa
+        ON ufa.folder_id = fi.folder_id
+       AND ufa.user_id = ?
+      ORDER BY fi.uploaded_at DESC
+    `;
+    filesParams = [user.id];
+  }
+
+  db.query(filesSql, filesParams, (err, files) => {
     if (err) {
       console.error('Files load error:', err);
       return res.status(500).send('Error loading files');
     }
 
-    db.query('SELECT * FROM folders', (err2, folders) => {
+    // ✅ Folders: admin sees all, users see only assigned folders
+    let foldersSql = 'SELECT * FROM folders ORDER BY created_at DESC';
+    let foldersParams = [];
+
+    if (user.role !== 'admin') {
+      foldersSql = `
+        SELECT f.*
+        FROM folders f
+        INNER JOIN user_folder_access ufa
+          ON ufa.folder_id = f.id
+        WHERE ufa.user_id = ?
+        ORDER BY f.created_at DESC
+      `;
+      foldersParams = [user.id];
+    }
+
+    db.query(foldersSql, foldersParams, (err2, folders) => {
       if (err2) {
         console.error('Folders load error:', err2);
         return res.status(500).send('Error loading folders');
@@ -39,7 +70,6 @@ router.get('/dashboard', isAuthenticated, (req, res) => {
         db.query(logsSql, (err3, logs) => {
           if (err3) {
             console.error('Logs load error:', err3);
-            // Even if logs fail, dashboard should still render
             return res.render('dashboard', { user, files, folders, logs: [] });
           }
 
