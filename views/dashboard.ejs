@@ -3,22 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dom Databank</title>
+  <title>DATABANK</title>
   <link rel="stylesheet" href="/css/pdp-theme.css">
 </head>
 <body>
 
-<% 
-  const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : []; 
+<%
+  const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : [];
+  const safeUsers = (typeof users !== 'undefined' && users) ? users : [];
+  const safeAccessRows = (typeof accessRows !== 'undefined' && accessRows) ? accessRows : [];
   const safeSelectedFolderName = (typeof selectedFolderName !== 'undefined' && selectedFolderName) ? selectedFolderName : null;
 
-  // privileges (admin bypass)
-  const canSearch = (user.role === 'admin') || Number(user.can_search);
-  const canPreview = (user.role === 'admin') || Number(user.can_preview);
-  const canPrint = (user.role === 'admin') || Number(user.can_print);
+  const isAdmin = user.role === 'admin';
+
+  // Privileges: admin bypass
+  const canSearch = isAdmin || Number(user.can_search);
+  const canPreview = isAdmin || Number(user.can_preview);
+  const canPrint = isAdmin || Number(user.can_print);
+
+  function toPublicUrl(fp) {
+    if (!fp) return '#';
+    const p = String(fp)
+      .replace(/\\/g, '/')
+      .replace('uploadsdocuments', 'uploads/documents');
+    return p.startsWith('/') ? p : '/' + p;
+  }
+
+  function userFolderIds(uid) {
+    const ids = safeAccessRows
+      .filter(r => String(r.user_id) === String(uid))
+      .map(r => String(r.folder_id));
+    return new Set(ids);
+  }
 %>
 
-<!-- ================= HEADER ================= -->
 <header>
   <div class="header-left"></div>
 
@@ -36,40 +54,29 @@
     </div>
 
     <form action="/logout" method="GET">
-      <button class="logout-btn">Logout</button>
+      <button class="logout-btn" type="submit">Logout</button>
     </form>
   </div>
 </header>
 
-<!-- ================= MAIN CONTENT ================= -->
 <div class="container">
   <div class="grid">
 
     <!-- LEFT COLUMN -->
     <div class="card">
-      <% if (user.role === 'admin') { %>
-        <button class="action-btn" onclick="openModal('userModal')">
-          User Management
-        </button>
-
-        <button class="action-btn" onclick="openModal('logsModal')">
-          Activity Logs
-        </button>
+      <% if (isAdmin) { %>
+        <button class="action-btn" onclick="openModal('userModal')">User Management</button>
+        <button class="action-btn" onclick="openModal('logsModal')">Activity Logs</button>
       <% } %>
 
-      <button class="action-btn" onclick="openModal('folderModal')">
-        Folder Management
-      </button>
-
-      <button class="action-btn red" onclick="openModal('fileModal')">
-        File Management
-      </button>
+      <button class="action-btn" onclick="openModal('folderModal')">Folder Management</button>
+      <button class="action-btn red" onclick="openModal('fileModal')">File Management</button>
     </div>
 
     <!-- RIGHT COLUMN -->
     <div class="card">
 
-      <!-- SEARCH BAR (privilege controlled) -->
+      <!-- Search only if allowed -->
       <% if (canSearch) { %>
         <form method="GET" action="/files/search" class="search-bar">
           <input type="text" name="keyword" placeholder="Search file name">
@@ -78,7 +85,6 @@
         </form>
       <% } %>
 
-      <!-- Folder view indicator -->
       <% if (safeSelectedFolderName) { %>
         <div class="folder-banner">
           <strong>Viewing Folder:</strong> <%= safeSelectedFolderName %>
@@ -88,7 +94,7 @@
 
       <h3>Recent Files</h3>
 
-      <!-- Protected Area (best-effort anti-screenshot for users) -->
+      <!-- Best-effort screenshot deterrence applies to non-admin users -->
       <div id="protectedArea" class="protected-area">
         <table>
           <tr>
@@ -100,13 +106,7 @@
 
           <% (files || []).forEach(f => { 
             const d = new Date(f.uploaded_at);
-
-            const rawPath = (f.filepath || '');
-            const fp = rawPath
-              .replace(/\\/g, '/')
-              .replace('uploadsdocuments', 'uploads/documents');
-
-            const fileUrl = fp.startsWith('/') ? fp : '/' + fp;
+            const fileUrl = toPublicUrl(f.filepath);
           %>
           <tr>
             <td><%= f.filename %></td>
@@ -114,70 +114,176 @@
             <td><%= d.toLocaleTimeString() %></td>
             <td>
               <% if (canPreview) { %>
-                <a href="<%= fileUrl %>" target="_blank">Preview</a>
+                <a href="<%= fileUrl %>" target="_blank" rel="noopener">Preview</a>
+              <% } else { %>
+                <span class="disabled-action">Preview</span>
               <% } %>
 
-              <% if (canPreview && canPrint) { %> | <% } %>
+              &nbsp;|&nbsp;
 
               <% if (canPrint) { %>
                 <a href="#" onclick="printFile('<%= fileUrl %>'); return false;">Print</a>
+              <% } else { %>
+                <span class="disabled-action">Print</span>
               <% } %>
 
-              <% if (user.role === 'admin') { %>
-                | <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
-                    <button style="background:none;border:none;color:red;cursor:pointer;">
-                      Delete
-                    </button>
-                  </form>
+              <% if (isAdmin) { %>
+                &nbsp;|&nbsp;
+                <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
+                  <button class="link-danger" type="submit">Delete</button>
+                </form>
               <% } %>
             </td>
           </tr>
           <% }) %>
         </table>
+
+        <% if (!isAdmin) { %>
+          <p class="hint small" style="margin-top:10px;">
+            Note: Preview/Print actions are controlled by Admin privileges. Screenshot blocking is best-effort on web.
+          </p>
+        <% } %>
       </div>
 
     </div>
   </div>
 </div>
 
-<!-- ================= USER MANAGEMENT MODAL ================= -->
+<!-- ================= USER MANAGEMENT MODAL (ADMIN ONLY) ================= -->
 <div id="userModal" class="modal">
-  <div class="modal-content">
+  <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('userModal')">&times;</span>
     <h3>User Management</h3>
 
-    <form method="POST" action="/admin/create-user">
-      <input name="fullname" placeholder="Full Name" required>
-      <input type="email" name="email" placeholder="Email" required>
-      <input type="password" name="password" placeholder="Password" required>
-      <select name="role">
-        <option value="user">User</option>
-        <option value="admin">Admin</option>
-      </select>
-      <button class="action-btn">Add User</button>
-    </form>
+    <div class="um-layout">
+      <!-- LEFT: user list -->
+      <div class="um-list">
+        <div class="um-toolbar">
+          <input id="userSearch" type="text" placeholder="Search users..." onkeyup="filterUsers()">
+        </div>
 
-    <p style="margin-top:12px; font-size: 12px;">
-      Folder assignment & privilege toggles are managed from the Admin controls you already added.
-    </p>
+        <div class="um-users" id="usersContainer">
+          <% (safeUsers || []).forEach(u => { %>
+            <button
+              type="button"
+              class="um-user"
+              data-userid="<%= u.id %>"
+              data-fullname="<%= u.fullname %>"
+              data-email="<%= u.email %>"
+              data-role="<%= u.role %>"
+              data-cansearch="<%= Number(u.can_search) %>"
+              data-canpreview="<%= Number(u.can_preview) %>"
+              data-canprint="<%= Number(u.can_print) %>"
+              onclick="selectUser(this)">
+              <div class="um-user-name"><%= u.fullname %></div>
+              <div class="um-user-meta"><%= u.email %> • <%= u.role.toUpperCase() %></div>
+            </button>
+          <% }) %>
+        </div>
+      </div>
+
+      <!-- RIGHT: create + edit panel -->
+      <div class="um-panel">
+
+        <!-- Create user -->
+        <div class="sub-card">
+          <h4>Create User</h4>
+          <form method="POST" action="/admin/create-user">
+            <input name="fullname" placeholder="Full Name" required>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <select name="role">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button class="action-btn" type="submit">Add User</button>
+          </form>
+        </div>
+
+        <!-- Edit selected user -->
+        <div class="sub-card" style="margin-top:12px;">
+          <h4>Modify User</h4>
+          <p class="hint small" id="umHint">Select a user from the list to edit roles, privileges, folders, or delete account.</p>
+
+          <form id="updateUserForm" method="POST" action="" class="um-form">
+            <div class="um-row">
+              <div>
+                <label class="label">Full Name</label>
+                <input id="umFullname" type="text" disabled>
+              </div>
+              <div>
+                <label class="label">Email</label>
+                <input id="umEmail" type="text" disabled>
+              </div>
+            </div>
+
+            <div class="um-row">
+              <div>
+                <label class="label">Role</label>
+                <select id="umRole" name="role">
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Privileges</label>
+                <div class="um-checks">
+                  <label><input id="umCanSearch" type="checkbox" name="can_search"> Search</label>
+                  <label><input id="umCanPreview" type="checkbox" name="can_preview"> Preview</label>
+                  <label><input id="umCanPrint" type="checkbox" name="can_print"> Print</label>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="label">Folder Assignment (multi-select)</label>
+              <select id="umFolders" name="folder_ids" multiple size="6" class="folder-multiselect">
+                <% (folders || []).forEach(f => { %>
+                  <option value="<%= f.id %>"><%= f.name %></option>
+                <% }) %>
+              </select>
+              <div class="hint small">
+                Hold Ctrl (Windows) / Cmd (Mac) to select multiple folders.
+              </div>
+            </div>
+
+            <div class="um-actions">
+              <button id="umSaveBtn" class="action-btn small" type="submit" disabled>Save Changes</button>
+
+              <button id="umDeleteBtn" class="link-danger" type="button" disabled onclick="deleteSelectedUser()">
+                Delete User
+              </button>
+            </div>
+
+            <input type="hidden" id="umUserId" value="">
+          </form>
+
+          <!-- access rows available to JS -->
+          <script>
+            window.__ACCESS_ROWS__ = <%- JSON.stringify(safeAccessRows || []) %>;
+            window.__SELF_USER_ID__ = "<%= user.id %>";
+          </script>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 </div>
 
-<!-- ================= FILE MANAGEMENT MODAL ================= -->
+<!-- FILE MANAGEMENT -->
 <div id="fileModal" class="modal">
   <div class="modal-content">
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
-    <!-- Admin-only folder creation -->
-    <% if (user.role === 'admin') { %>
+    <% if (isAdmin) { %>
       <form method="POST" action="/folder">
         <input name="name" placeholder="Folder Name" required>
-        <button class="action-btn">Create Folder</button>
+        <button class="action-btn" type="submit">Create Folder</button>
       </form>
     <% } %>
 
-    <!-- Upload (folders list already filtered by backend for users) -->
     <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
       <select name="folder_id" required>
         <% (folders || []).forEach(f => { %>
@@ -185,12 +291,12 @@
         <% }) %>
       </select>
       <input type="file" name="document" required>
-      <button class="action-btn red">Upload File</button>
+      <button class="action-btn red" type="submit">Upload File</button>
     </form>
   </div>
 </div>
 
-<!-- ================= FOLDER MANAGEMENT MODAL ================= -->
+<!-- FOLDER MANAGEMENT -->
 <div id="folderModal" class="modal">
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('folderModal')">&times;</span>
@@ -206,9 +312,7 @@
         <% (folders || []).forEach(folder => { %>
           <tr>
             <td><%= folder.name %></td>
-            <td>
-              <a href="/files/folder/<%= folder.id %>">Open</a>
-            </td>
+            <td><a href="/files/folder/<%= folder.id %>">Open</a></td>
           </tr>
         <% }) %>
       </table>
@@ -216,7 +320,7 @@
   </div>
 </div>
 
-<!-- ================= ACTIVITY LOGS MODAL (ADMIN ONLY) ================= -->
+<!-- LOGS (ADMIN ONLY) -->
 <div id="logsModal" class="modal">
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('logsModal')">&times;</span>
@@ -233,7 +337,7 @@
           <th>Time</th>
         </tr>
 
-        <% safeLogs.forEach(l => { 
+        <% (safeLogs || []).forEach(l => { 
           const dt = new Date(l.created_at);
         %>
         <tr>
@@ -248,26 +352,18 @@
         <% }) %>
       </table>
     </div>
-
   </div>
 </div>
 
-<!-- ================= FOOTER ================= -->
 <footer>
   Directorate of Organization and Mobilization © 2026
 </footer>
 
-<!-- ================= SCRIPTS ================= -->
 <script>
-function openModal(id) {
-  document.getElementById(id).style.display = 'block';
-}
+function openModal(id) { document.getElementById(id).style.display = 'block'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function closeModal(id) {
-  document.getElementById(id).style.display = 'none';
-}
-
-// Print helper: prints the actual file (best effort).
+// Print helper
 function printFile(url) {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
@@ -284,12 +380,12 @@ function printFile(url) {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     } catch (e) {
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener');
     }
   };
 }
 
-// Filter logs
+// Logs filter
 function filterLogs() {
   const input = document.getElementById('logFilter');
   const filter = (input.value || '').toLowerCase();
@@ -303,7 +399,89 @@ function filterLogs() {
   }
 }
 
-// Best-effort anti-screenshot deterrence (ONLY for non-admin users)
+/* ================= User Management Interactive ================= */
+let selectedUserId = null;
+
+function filterUsers() {
+  const q = (document.getElementById('userSearch').value || '').toLowerCase();
+  const buttons = document.querySelectorAll('.um-user');
+  buttons.forEach(btn => {
+    const text = (btn.innerText || '').toLowerCase();
+    btn.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+function selectUser(btn) {
+  // highlight
+  document.querySelectorAll('.um-user').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  selectedUserId = btn.dataset.userid;
+  document.getElementById('umUserId').value = selectedUserId;
+
+  // populate fields
+  document.getElementById('umFullname').value = btn.dataset.fullname || '';
+  document.getElementById('umEmail').value = btn.dataset.email || '';
+
+  const role = btn.dataset.role || 'user';
+  document.getElementById('umRole').value = role;
+
+  document.getElementById('umCanSearch').checked = Number(btn.dataset.cansearch) === 1;
+  document.getElementById('umCanPreview').checked = Number(btn.dataset.canpreview) === 1;
+  document.getElementById('umCanPrint').checked = Number(btn.dataset.canprint) === 1;
+
+  // action URL
+  const form = document.getElementById('updateUserForm');
+  form.action = `/admin/users/${selectedUserId}/update`;
+
+  // folders selection from access rows
+  const access = window.__ACCESS_ROWS__ || [];
+  const folderSet = new Set(access.filter(r => String(r.user_id) === String(selectedUserId)).map(r => String(r.folder_id)));
+
+  const sel = document.getElementById('umFolders');
+  Array.from(sel.options).forEach(opt => {
+    opt.selected = folderSet.has(String(opt.value));
+  });
+
+  // enable save/delete unless self or admin user
+  const selfId = String(window.__SELF_USER_ID__ || '');
+  const isSelf = String(selectedUserId) === selfId;
+  const isTargetAdmin = role === 'admin';
+
+  document.getElementById('umSaveBtn').disabled = isSelf; // prevent changing own role/privs
+  document.getElementById('umDeleteBtn').disabled = (isSelf || isTargetAdmin);
+
+  // if target is admin, disable folder assignment (admin bypass)
+  document.getElementById('umFolders').disabled = isTargetAdmin;
+
+  document.getElementById('umHint').innerText =
+    isSelf ? 'You cannot modify your own admin privileges here.' :
+    isTargetAdmin ? 'Admin accounts bypass restrictions (folders not required).' :
+    'Modify role/privileges and assign folders, then Save.';
+}
+
+function deleteSelectedUser() {
+  if (!selectedUserId) return;
+
+  const btn = document.querySelector(`.um-user[data-userid="${selectedUserId}"]`);
+  const role = btn ? (btn.dataset.role || '') : '';
+
+  if (role === 'admin') {
+    alert('You cannot delete an admin account.');
+    return;
+  }
+
+  if (!confirm('Delete this user account?')) return;
+
+  // create a form POST
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = `/admin/users/${selectedUserId}/delete`;
+  document.body.appendChild(f);
+  f.submit();
+}
+
+/* ================= Best-effort anti-screenshot (non-admin) ================= */
 (function () {
   const isAdmin = "<%= user.role %>" === "admin";
   if (isAdmin) return;
@@ -311,27 +489,25 @@ function filterLogs() {
   const area = document.getElementById('protectedArea');
   if (!area) return;
 
-  // disable right-click within protected area
+  // disable right-click in file list
   area.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // disable selection / copying
+  // disable selection/copy
   area.style.userSelect = 'none';
   area.style.webkitUserSelect = 'none';
 
-  // blur on PrintScreen key
+  // blur on PrintScreen
   document.addEventListener('keydown', (e) => {
     if (e.key === 'PrintScreen') {
       area.classList.add('blurred');
       setTimeout(() => area.classList.remove('blurred'), 2000);
     }
-
-    // block common copy shortcuts in protected area
-    if ((e.ctrlKey || e.metaKey) && ['c', 'x', 's', 'p'].includes((e.key || '').toLowerCase())) {
+    if ((e.ctrlKey || e.metaKey) && ['c', 'x', 's'].includes((e.key || '').toLowerCase())) {
       e.preventDefault();
     }
   });
 
-  // blur on tab switch (visibility change)
+  // blur on tab switch
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) area.classList.add('blurred');
     else area.classList.remove('blurred');
