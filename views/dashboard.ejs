@@ -31,6 +31,58 @@
       .replace('uploadsdocuments', 'uploads/documents');
     return p.startsWith('/') ? p : '/' + p;
   }
+
+  // ===== Folder tree helpers (requires folders.parent_id in DB) =====
+  const allFolders = (folders || []).map(f => ({
+    ...f,
+    parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
+  }));
+
+  const folderById = new Map(allFolders.map(f => [String(f.id), f]));
+  const childrenMap = new Map();
+  allFolders.forEach(f => {
+    const pid = f.parent_id === null ? 'root' : String(f.parent_id);
+    if (!childrenMap.has(pid)) childrenMap.set(pid, []);
+    childrenMap.get(pid).push(f);
+  });
+
+  function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
+  (childrenMap.get('root') || []).sort(sortByName);
+  childrenMap.forEach((arr, key) => { arr.sort(sortByName); });
+
+  function buildFolderLabel(f, depth) {
+    const prefix = depth > 0 ? ('—'.repeat(depth) + ' ') : '';
+    return prefix + f.name;
+  }
+
+  function renderFolderButtons(parentKey, depth) {
+    const kids = childrenMap.get(parentKey) || [];
+    let out = '';
+    kids.forEach(child => {
+      out += `
+        <button
+          type="button"
+          class="fm-folder"
+          data-folderid="${child.id}"
+          data-foldername="${String(child.name).replace(/"/g,'&quot;')}"
+          onclick="selectFolder(this)">
+          <div class="fm-folder-name">${buildFolderLabel(child, depth)}</div>
+        </button>
+      `;
+      out += renderFolderButtons(String(child.id), depth + 1);
+    });
+    return out;
+  }
+
+  function renderFolderOptions(parentKey, depth) {
+    const kids = childrenMap.get(parentKey) || [];
+    let out = '';
+    kids.forEach(child => {
+      out += `<option value="${child.id}">${buildFolderLabel(child, depth)}</option>`;
+      out += renderFolderOptions(String(child.id), depth + 1);
+    });
+    return out;
+  }
 %>
 
 <header>
@@ -277,19 +329,12 @@
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
-    <% if (isAdmin) { %>
-      <form method="POST" action="/folder">
-        <input name="name" placeholder="Folder Name" required>
-        <button class="action-btn" type="submit">Create Folder</button>
-      </form>
-    <% } %>
-
     <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
+      <label class="label">Select Folder</label>
       <select name="folder_id" required>
-        <% (folders || []).forEach(f => { %>
-          <option value="<%= f.id %>"><%= f.name %></option>
-        <% }) %>
+        <%- renderFolderOptions('root', 0) %>
       </select>
+
       <input type="file" name="document" required>
       <button class="action-btn red" type="submit">Upload File</button>
     </form>
@@ -311,16 +356,7 @@
         </div>
 
         <div class="fm-folders" id="foldersContainer">
-          <% (folders || []).forEach(f => { %>
-            <button
-              type="button"
-              class="fm-folder"
-              data-folderid="<%= f.id %>"
-              data-foldername="<%= f.name %>"
-              onclick="selectFolder(this)">
-              <div class="fm-folder-name"><%= f.name %></div>
-            </button>
-          <% }) %>
+          <%- renderFolderButtons('root', 0) %>
         </div>
       </div>
 
@@ -331,10 +367,18 @@
 
           <% if (isAdmin) { %>
             <form method="POST" action="/folder">
+              <label class="label">Folder Name</label>
               <input name="name" placeholder="Folder Name" required>
+
+              <label class="label">Create Inside (Parent Folder)</label>
+              <select name="parent_id">
+                <option value="">-- None (Top Level) --</option>
+                <%- renderFolderOptions('root', 0) %>
+              </select>
+
               <button class="action-btn" type="submit">Create Folder</button>
             </form>
-            <p class="hint small">Tip: folders become selectable in the list immediately after refresh.</p>
+            <p class="hint small">Choose a parent folder to create a subfolder.</p>
           <% } else { %>
             <p class="hint">Only Admin can create folders.</p>
           <% } %>
@@ -357,8 +401,7 @@
 
             <form id="renameFolderForm" method="POST" action="">
               <label class="label">Rename To</label>
-              <!-- ✅ IMPORTANT FIX: controller expects req.body.name -->
-              <input id="fmNewName" name="name" placeholder="Enter new folder name" required disabled>
+              <input id="fmNewName" name="new_name" placeholder="Enter new folder name" required disabled>
               <button id="fmRenameBtn" class="action-btn" type="submit" disabled>Rename Folder</button>
             </form>
 
@@ -367,7 +410,7 @@
                 Delete Folder
               </button>
               <p class="hint small" style="margin-top:8px;">
-                Deleting a folder may affect files inside it (depending on your DB constraints).
+                Folder deletion is blocked if it has files or subfolders.
               </p>
             </div>
 
@@ -600,7 +643,7 @@ function selectFolder(btn) {
 
 function deleteSelectedFolder() {
   if (!selectedFolderId) return;
-  if (!confirm('Delete this folder? This may affect files inside it.')) return;
+  if (!confirm('Delete this folder? (Blocked if it has files or subfolders)')) return;
 
   const f = document.createElement('form');
   f.method = 'POST';
