@@ -3,6 +3,29 @@
 <head>
   <title>DOM – File Management System</title>
   <link rel="stylesheet" href="/css/login.css">
+
+  <style>
+    .password-wrapper {
+      position: relative;
+      width: 100%;
+    }
+
+    .password-wrapper input {
+      width: 100%;
+      padding-right: 42px;
+    }
+
+    .toggle-password {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 14px;
+      color: #006400;
+      user-select: none;
+    }
+  </style>
 </head>
 <body>
 
@@ -23,14 +46,41 @@
     <h2>Login</h2>
 
     <form method="POST" action="/login">
+
       <input type="email" name="email" placeholder="Email Address" required>
-      <input type="password" name="password" placeholder="Password" required>
+
+      <!-- ✅ Password with toggle -->
+      <div class="password-wrapper">
+        <input
+          type="password"
+          id="passwordField"
+          name="password"
+          placeholder="Password"
+          required
+        >
+        <span class="toggle-password" onclick="togglePassword()">👁</span>
+      </div>
 
       <button type="submit">Login</button>
     </form>
   </div>
 
 </div>
+
+<script>
+  function togglePassword() {
+    const field = document.getElementById("passwordField");
+    const icon = document.querySelector(".toggle-password");
+
+    if (field.type === "password") {
+      field.type = "text";
+      icon.textContent = "🙈";
+    } else {
+      field.type = "password";
+      icon.textContent = "👁";
+    }
+  }
+</script>
 
 </body>
 </html>
