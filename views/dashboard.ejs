@@ -31,13 +31,6 @@
       .replace('uploadsdocuments', 'uploads/documents');
     return p.startsWith('/') ? p : '/' + p;
   }
-
-  function userFolderIds(uid) {
-    const ids = safeAccessRows
-      .filter(r => String(r.user_id) === String(uid))
-      .map(r => String(r.folder_id));
-    return new Set(ids);
-  }
 %>
 
 <header>
@@ -95,7 +88,6 @@
         </div>
       <% } %>
 
-      <!-- ✅ Table shifted upward: tighter spacing -->
       <h3 class="recent-title">Recent Files</h3>
 
       <!-- Best-effort screenshot deterrence applies to non-admin users -->
@@ -266,7 +258,6 @@
               <input type="hidden" id="umUserId" value="">
             </form>
 
-            <!-- access rows available to JS -->
             <script>
               window.__ACCESS_ROWS__ = <%- JSON.stringify(safeAccessRows || []) %>;
               window.__SELF_USER_ID__ = "<%= user.id %>";
@@ -305,26 +296,91 @@
   </div>
 </div>
 
-<!-- FOLDER MANAGEMENT -->
+<!-- ================= FOLDER MANAGEMENT (FULL SCREEN, 3 COLUMNS) ================= -->
 <div id="folderModal" class="modal">
-  <div class="modal-content modal-wide">
+  <div class="modal-content modal-wide modal-full">
     <span class="close" onclick="closeModal('folderModal')">&times;</span>
     <h3>Folder Management</h3>
 
-    <div style="max-height: 420px; overflow:auto; margin-top:10px;">
-      <table>
-        <tr>
-          <th>Folder Name</th>
-          <th>Action</th>
-        </tr>
+    <div class="fm-layout">
 
-        <% (folders || []).forEach(folder => { %>
-          <tr>
-            <td><%= folder.name %></td>
-            <td><a href="/files/folder/<%= folder.id %>">Open</a></td>
-          </tr>
-        <% }) %>
-      </table>
+      <!-- Column 1: Search + list -->
+      <div class="fm-list">
+        <div class="fm-toolbar">
+          <input id="folderSearch" type="text" placeholder="Search folders..." onkeyup="filterFolders()">
+        </div>
+
+        <div class="fm-folders" id="foldersContainer">
+          <% (folders || []).forEach(f => { %>
+            <button
+              type="button"
+              class="fm-folder"
+              data-folderid="<%= f.id %>"
+              data-foldername="<%= f.name %>"
+              onclick="selectFolder(this)">
+              <div class="fm-folder-name"><%= f.name %></div>
+              <div class="fm-folder-meta">ID: <%= f.id %></div>
+            </button>
+          <% }) %>
+        </div>
+      </div>
+
+      <!-- Column 2: Create folder -->
+      <div class="fm-create">
+        <div class="sub-card">
+          <h4>Create Folder</h4>
+
+          <% if (isAdmin) { %>
+            <form method="POST" action="/folder">
+              <input name="name" placeholder="Folder Name" required>
+              <button class="action-btn" type="submit">Create Folder</button>
+            </form>
+            <p class="hint small">Tip: folders become selectable in the list immediately after refresh.</p>
+          <% } else { %>
+            <p class="hint">Only Admin can create folders.</p>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Column 3: Modify folder -->
+      <div class="fm-modify">
+        <div class="sub-card">
+          <h4>Modify Folder</h4>
+          <p class="hint small" id="fmHint">Select a folder from the list to rename or delete.</p>
+
+          <% if (isAdmin) { %>
+
+            <div class="fm-selected">
+              <label class="label">Selected Folder</label>
+              <input id="fmFolderName" type="text" disabled placeholder="No folder selected">
+              <input id="fmFolderId" type="hidden" value="">
+            </div>
+
+            <form id="renameFolderForm" method="POST" action="">
+              <label class="label">Rename To</label>
+              <input id="fmNewName" name="new_name" placeholder="Enter new folder name" required disabled>
+              <button id="fmRenameBtn" class="action-btn" type="submit" disabled>Rename Folder</button>
+            </form>
+
+            <div style="margin-top:10px;">
+              <button id="fmDeleteBtn" class="action-btn red" type="button" disabled onclick="deleteSelectedFolder()">
+                Delete Folder
+              </button>
+              <p class="hint small" style="margin-top:8px;">
+                Deleting a folder may affect files inside it (depending on your DB constraints).
+              </p>
+            </div>
+
+            <div style="margin-top:10px;">
+              <a id="fmOpenLink" class="back-link" href="#" style="display:none;">Open Folder</a>
+            </div>
+
+          <% } else { %>
+            <p class="hint">Only Admin can rename or delete folders.</p>
+          <% } %>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -381,12 +437,9 @@ function showToast(message, type = "success") {
   el.innerText = message;
 
   clearTimeout(window.__toastTimer__);
-  window.__toastTimer__ = setTimeout(() => {
-    el.classList.remove("show");
-  }, 3500);
+  window.__toastTimer__ = setTimeout(() => el.classList.remove("show"), 3500);
 }
 
-// Auto-show toast from URL params: ?success=... or ?error=... or ?info=...
 (function () {
   const params = new URLSearchParams(window.location.search);
   const success = params.get("success");
@@ -397,14 +450,12 @@ function showToast(message, type = "success") {
   if (error) showToast(error, "error");
   if (info) showToast(info, "info");
 
-  // Clean URL (keeps the page clean after showing)
   if (success || error || info) {
-    const cleanUrl = window.location.pathname;
-    window.history.replaceState({}, document.title, cleanUrl);
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 })();
 
-// Print helper
+/* ================= Print helper ================= */
 function printFile(url) {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
@@ -426,7 +477,7 @@ function printFile(url) {
   };
 }
 
-// Logs filter
+/* ================= Logs filter ================= */
 function filterLogs() {
   const input = document.getElementById('logFilter');
   const filter = (input.value || '').toLowerCase();
@@ -440,27 +491,23 @@ function filterLogs() {
   }
 }
 
-/* ================= User Management Interactive ================= */
+/* ================= User Management ================= */
 let selectedUserId = null;
 
 function filterUsers() {
   const q = (document.getElementById('userSearch').value || '').toLowerCase();
-  const buttons = document.querySelectorAll('.um-user');
-  buttons.forEach(btn => {
-    const text = (btn.innerText || '').toLowerCase();
-    btn.style.display = text.includes(q) ? '' : 'none';
+  document.querySelectorAll('.um-user').forEach(btn => {
+    btn.style.display = (btn.innerText || '').toLowerCase().includes(q) ? '' : 'none';
   });
 }
 
 function selectUser(btn) {
-  // highlight
   document.querySelectorAll('.um-user').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
   selectedUserId = btn.dataset.userid;
   document.getElementById('umUserId').value = selectedUserId;
 
-  // populate fields
   document.getElementById('umFullname').value = btn.dataset.fullname || '';
   document.getElementById('umEmail').value = btn.dataset.email || '';
 
@@ -471,28 +518,21 @@ function selectUser(btn) {
   document.getElementById('umCanPreview').checked = Number(btn.dataset.canpreview) === 1;
   document.getElementById('umCanPrint').checked = Number(btn.dataset.canprint) === 1;
 
-  // action URL
   const form = document.getElementById('updateUserForm');
   form.action = `/admin/users/${selectedUserId}/update`;
 
-  // folders selection from access rows
   const access = window.__ACCESS_ROWS__ || [];
   const folderSet = new Set(access.filter(r => String(r.user_id) === String(selectedUserId)).map(r => String(r.folder_id)));
 
   const sel = document.getElementById('umFolders');
-  Array.from(sel.options).forEach(opt => {
-    opt.selected = folderSet.has(String(opt.value));
-  });
+  Array.from(sel.options).forEach(opt => opt.selected = folderSet.has(String(opt.value)));
 
-  // enable save/delete unless self or admin user
   const selfId = String(window.__SELF_USER_ID__ || '');
   const isSelf = String(selectedUserId) === selfId;
   const isTargetAdmin = role === 'admin';
 
-  document.getElementById('umSaveBtn').disabled = isSelf; // prevent changing own role/privs
+  document.getElementById('umSaveBtn').disabled = isSelf;
   document.getElementById('umDeleteBtn').disabled = (isSelf || isTargetAdmin);
-
-  // if target is admin, disable folder assignment (admin bypass)
   document.getElementById('umFolders').disabled = isTargetAdmin;
 
   document.getElementById('umHint').innerText =
@@ -503,21 +543,68 @@ function selectUser(btn) {
 
 function deleteSelectedUser() {
   if (!selectedUserId) return;
-
   const btn = document.querySelector(`.um-user[data-userid="${selectedUserId}"]`);
   const role = btn ? (btn.dataset.role || '') : '';
-
-  if (role === 'admin') {
-    alert('You cannot delete an admin account.');
-    return;
-  }
-
+  if (role === 'admin') return alert('You cannot delete an admin account.');
   if (!confirm('Delete this user account?')) return;
 
-  // create a form POST
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = `/admin/users/${selectedUserId}/delete`;
+  document.body.appendChild(f);
+  f.submit();
+}
+
+/* ================= Folder Management (3-column interactive) ================= */
+let selectedFolderId = null;
+
+function filterFolders() {
+  const q = (document.getElementById('folderSearch').value || '').toLowerCase();
+  document.querySelectorAll('.fm-folder').forEach(btn => {
+    btn.style.display = (btn.innerText || '').toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function selectFolder(btn) {
+  document.querySelectorAll('.fm-folder').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  selectedFolderId = btn.dataset.folderid;
+  const folderName = btn.dataset.foldername || '';
+
+  const idEl = document.getElementById('fmFolderId');
+  const nameEl = document.getElementById('fmFolderName');
+  const newNameEl = document.getElementById('fmNewName');
+  const renameBtn = document.getElementById('fmRenameBtn');
+  const deleteBtn = document.getElementById('fmDeleteBtn');
+  const hint = document.getElementById('fmHint');
+  const openLink = document.getElementById('fmOpenLink');
+
+  if (idEl) idEl.value = selectedFolderId;
+  if (nameEl) nameEl.value = folderName;
+
+  if (newNameEl) { newNameEl.disabled = false; newNameEl.value = folderName; }
+  if (renameBtn) renameBtn.disabled = false;
+  if (deleteBtn) deleteBtn.disabled = false;
+
+  const renameForm = document.getElementById('renameFolderForm');
+  if (renameForm) renameForm.action = `/folder/${selectedFolderId}/rename`; // change if your route differs
+
+  if (openLink) {
+    openLink.style.display = 'inline-block';
+    openLink.href = `/files/folder/${selectedFolderId}`;
+  }
+
+  if (hint) hint.innerText = `Selected: ${folderName} (ID: ${selectedFolderId})`;
+}
+
+function deleteSelectedFolder() {
+  if (!selectedFolderId) return;
+  if (!confirm('Delete this folder? This may affect files inside it.')) return;
+
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = `/folder/${selectedFolderId}/delete`; // change if your route differs
   document.body.appendChild(f);
   f.submit();
 }
@@ -530,14 +617,10 @@ function deleteSelectedUser() {
   const area = document.getElementById('protectedArea');
   if (!area) return;
 
-  // disable right-click in file list
   area.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // disable selection/copy
   area.style.userSelect = 'none';
   area.style.webkitUserSelect = 'none';
 
-  // blur on PrintScreen
   document.addEventListener('keydown', (e) => {
     if (e.key === 'PrintScreen') {
       area.classList.add('blurred');
@@ -548,7 +631,6 @@ function deleteSelectedUser() {
     }
   });
 
-  // blur on tab switch
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) area.classList.add('blurred');
     else area.classList.remove('blurred');

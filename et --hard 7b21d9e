@@ -1,0 +1,18 @@
+[33m25efe09[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m UI improvements: user management + folder management modals, search bar layout, notifications
+[33m973ceb6[m Improve user management layout, add success popups, fix file/folder handling
+[33mf90b0fd[m Improve User Management layout: Create and Modify side-by-side
+[33mdb8c3fe[m Fix User Management modal visibility and scrolling
+[33md42d6ca[m Interactive user management + folder assignment + privilege enforcement
+[33mf02d2a4[m Enforce folder access + update header + anti-screenshot UI
+[33m85b453f[m Fix uploads for Railway volume + stable preview/print urls
+[33m8036258[m Graceful shutdown on Railway SIGTERM
+[33m9b29745[m Fix Railway health check: root returns 200
+[33md5b078e[m Final Railway server fix: bind 0.0.0.0 + health + crash safety
+[33m2e6e250[m Add .gitignore and remove sensitive/generated files
+[33m94ffd59[m Add health route + root redirect for Railway
+[33m6ed769a[m Fix Railway startup: env PORT, sessions, uploads, and DB config
+[33md4c92b2[m Improve MySQL connection error logging
+[33mad19933[m Fix Railway start command (use server.js)
+[33m4a5a526[m Render disk uploads: env paths + store web filepath
+[33m40b148e[m Use env vars for MySQL (Render/Railway ready)
+[33mc913ef7[m Initial commit - Dom Databank

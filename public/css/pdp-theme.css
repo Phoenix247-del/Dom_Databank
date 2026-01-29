@@ -154,30 +154,23 @@ th {
   color: white;
 }
 
-/* ✅ SEARCH BAR (one-row compact layout) */
+/* SEARCH BAR (one-row compact layout) */
 .search-bar {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px; /* tighter so table shifts up */
+  margin-bottom: 8px;
   flex-wrap: nowrap;
 }
 
 .search-input {
   padding: 10px;
   height: 42px;
-  margin-bottom: 0; /* important: don't push down */
+  margin-bottom: 0;
 }
 
-.search-keyword {
-  width: 260px; /* reduced width */
-  max-width: 50vw;
-}
-
-.search-date {
-  width: 170px; /* reduced width */
-}
-
+.search-keyword { width: 260px; max-width: 50vw; }
+.search-date { width: 170px; }
 .search-btn {
   height: 42px;
   padding: 0 16px;
@@ -190,9 +183,7 @@ th {
 }
 
 /* Recent list spacing (shift upward) */
-.recent-title {
-  margin: 8px 0 10px;
-}
+.recent-title { margin: 8px 0 10px; }
 .recent-files-area { margin-top: 0; }
 .recent-table { margin-top: 0; }
 
@@ -242,6 +233,13 @@ th {
   overflow: auto;
 }
 
+/* Full screen modal feel */
+.modal-full {
+  width: min(1400px, 98vw);
+  height: calc(100vh - 36px);
+  max-height: calc(100vh - 36px);
+}
+
 .close {
   position: absolute;
   right: 12px; top: 10px;
@@ -257,7 +255,6 @@ th {
   margin-top: 10px;
 }
 
-/* Left list column */
 .um-list {
   border: 1px solid #e6e6e6;
   border-radius: 4px;
@@ -273,10 +270,7 @@ th {
   border-bottom: 1px solid #eee;
 }
 
-.um-users {
-  flex: 1;
-  overflow: auto;
-}
+.um-users { flex: 1; overflow: auto; }
 
 .um-user {
   width: 100%;
@@ -293,9 +287,6 @@ th {
 .um-user-name { font-weight: bold; color: #006400; }
 .um-user-meta { font-size: 12px; color: #555; margin-top: 2px; }
 
-.um-panel .sub-card h4 { margin: 0 0 10px; }
-
-/* Create + Modify side-by-side */
 .um-panel { min-height: 60vh; }
 
 .um-panel-grid {
@@ -319,7 +310,6 @@ th {
 
 .um-checks label { display: inline-block; margin-right: 12px; font-size: 13px; }
 
-/* Sticky actions */
 .um-actions {
   display: flex;
   align-items: center;
@@ -331,6 +321,58 @@ th {
   padding-top: 10px;
   border-top: 1px solid #eee;
 }
+
+/* ================= FOLDER MANAGEMENT (3 columns) ================= */
+.fm-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+  min-height: 70vh;
+}
+
+.fm-list {
+  border: 1px solid #e6e6e6;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 70vh;
+}
+
+.fm-toolbar {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.fm-folders {
+  flex: 1;
+  overflow: auto;
+}
+
+.fm-folder {
+  width: 100%;
+  border: none;
+  background: #fff;
+  text-align: left;
+  padding: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f1f1;
+}
+.fm-folder:hover { background: #f7fbf7; }
+.fm-folder.active { background: #e9f7ea; }
+
+.fm-folder-name { font-weight: bold; color: #006400; }
+.fm-folder-meta { font-size: 12px; color: #555; margin-top: 2px; }
+
+.fm-create .sub-card,
+.fm-modify .sub-card {
+  min-height: 70vh;
+  overflow: auto;
+}
+
+.fm-modify .action-btn { margin-top: 6px; }
 
 /* FOOTER */
 footer {
@@ -348,7 +390,7 @@ footer {
 }
 .protected-area.blurred { filter: blur(10px); }
 
-/* ✅ TOAST POPUPS */
+/* TOAST POPUPS */
 .toast {
   position: fixed;
   top: 18px;
@@ -385,13 +427,12 @@ footer {
 
   .um-layout { grid-template-columns: 1fr; }
   .um-panel-grid { grid-template-columns: 1fr; }
-
-  .um-create,
-  .um-modify { max-height: none; }
-
+  .um-create, .um-modify { max-height: none; }
   .um-form .um-row { grid-template-columns: 1fr; }
 
-  /* Search becomes stacked on mobile */
+  .fm-layout { grid-template-columns: 1fr; }
+  .fm-create .sub-card, .fm-modify .sub-card { min-height: auto; }
+
   .search-bar { flex-wrap: wrap; }
   .search-keyword { width: 100%; max-width: 100%; }
   .search-date { width: 100%; }
