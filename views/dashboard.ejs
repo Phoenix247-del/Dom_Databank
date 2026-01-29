@@ -357,7 +357,8 @@
 
             <form id="renameFolderForm" method="POST" action="">
               <label class="label">Rename To</label>
-              <input id="fmNewName" name="new_name" placeholder="Enter new folder name" required disabled>
+              <!-- ✅ IMPORTANT FIX: controller expects req.body.name -->
+              <input id="fmNewName" name="name" placeholder="Enter new folder name" required disabled>
               <button id="fmRenameBtn" class="action-btn" type="submit" disabled>Rename Folder</button>
             </form>
 
@@ -587,7 +588,7 @@ function selectFolder(btn) {
   if (deleteBtn) deleteBtn.disabled = false;
 
   const renameForm = document.getElementById('renameFolderForm');
-  if (renameForm) renameForm.action = `/folder/${selectedFolderId}/rename`; // change if your route differs
+  if (renameForm) renameForm.action = `/folder/${selectedFolderId}/rename`;
 
   if (openLink) {
     openLink.style.display = 'inline-block';
@@ -603,7 +604,7 @@ function deleteSelectedFolder() {
 
   const f = document.createElement('form');
   f.method = 'POST';
-  f.action = `/folder/${selectedFolderId}/delete`; // change if your route differs
+  f.action = `/folder/${selectedFolderId}/delete`;
   document.body.appendChild(f);
   f.submit();
 }

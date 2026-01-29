@@ -7,7 +7,8 @@ const controller = require('../controllers/folder.controller');
 
 /**
  * Create folder (ADMIN ONLY)
- * Existing route preserved: POST /folder
+ * POST /folder
+ * Supports optional parent_id for nested folders
  */
 router.post(
   '/folder',
@@ -32,6 +33,7 @@ router.post(
 /**
  * Delete folder (ADMIN ONLY)
  * POST /folder/:id/delete
+ * Blocks delete if folder has files OR subfolders
  */
 router.post(
   '/folder/:id/delete',
