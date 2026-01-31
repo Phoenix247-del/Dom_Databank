@@ -40,39 +40,25 @@
 
   const childrenMap = new Map();
   allFolders.forEach(f => {
-    const pid = f.parent_id === null ? 'root' : String(f.parent_id);
+    const pid = (f.parent_id === null) ? 'root' : String(f.parent_id);
     if (!childrenMap.has(pid)) childrenMap.set(pid, []);
     childrenMap.get(pid).push(f);
   });
 
   function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
   (childrenMap.get('root') || []).sort(sortByName);
-  childrenMap.forEach((arr) => { arr.sort(sortByName); });
+  childrenMap.forEach((arr) => arr.sort(sortByName));
+
+  function escAttr(s) {
+    return String(s || '').replace(/"/g,'&quot;');
+  }
 
   function buildFolderLabel(f, depth) {
     const prefix = depth > 0 ? ('—'.repeat(depth) + ' ') : '';
     return prefix + f.name;
   }
 
-  function renderFolderButtons(parentKey, depth) {
-    const kids = childrenMap.get(parentKey) || [];
-    let out = '';
-    kids.forEach(child => {
-      out += `
-        <button
-          type="button"
-          class="fm-folder"
-          data-folderid="${child.id}"
-          data-foldername="${String(child.name).replace(/"/g,'&quot;')}"
-          onclick="selectFolder(this)">
-          <div class="fm-folder-name">${buildFolderLabel(child, depth)}</div>
-        </button>
-      `;
-      out += renderFolderButtons(String(child.id), depth + 1);
-    });
-    return out;
-  }
-
+  // Full recursive options for selects (used in Create Inside dropdown & upload)
   function renderFolderOptions(parentKey, depth) {
     const kids = childrenMap.get(parentKey) || [];
     let out = '';
@@ -80,6 +66,98 @@
       out += `<option value="${child.id}">${buildFolderLabel(child, depth)}</option>`;
       out += renderFolderOptions(String(child.id), depth + 1);
     });
+    return out;
+  }
+
+  /**
+   * Folder list for Folder Management LEFT COLUMN:
+   * - Only show TOP-LEVEL folders by default
+   * - Each top-level can expand/collapse its subtree
+   * - Subtree is wrapped in a container that is hidden until expanded
+   */
+  function renderFolderTreeForList(parentKey, depth, rootOnly) {
+    const kids = childrenMap.get(parentKey) || [];
+    let out = '';
+
+    kids.forEach(child => {
+      const hasChildren = (childrenMap.get(String(child.id)) || []).length > 0;
+
+      // If rootOnly, we only render depth 0 items here.
+      if (rootOnly && depth > 0) return;
+
+      const toggleBtn = hasChildren
+        ? `<button type="button" class="fm-toggle" aria-label="Toggle" data-toggle-id="kids-${child.id}" data-state="closed">▶</button>`
+        : `<span class="fm-toggle fm-toggle-empty"></span>`;
+
+      out += `
+        <div class="fm-node" data-node="1" data-depth="${depth}" data-folderid="${child.id}" data-foldername="${escAttr(child.name)}">
+          <button
+            type="button"
+            class="fm-folder"
+            data-folderid="${child.id}"
+            data-foldername="${escAttr(child.name)}"
+            data-parentid="${child.parent_id === null ? '' : child.parent_id}"
+            data-haschildren="${hasChildren ? '1' : '0'}"
+            onclick="selectFolder(this)">
+            <div class="fm-folder-row">
+              ${toggleBtn}
+              <div class="fm-folder-name">${child.name}</div>
+            </div>
+          </button>
+        </div>
+      `;
+
+      // Render subtree container (hidden) – contains all children recursively
+      if (hasChildren) {
+        out += `
+          <div class="fm-children" id="kids-${child.id}" data-parent="${child.id}" style="display:none;">
+            ${renderFolderSubtree(String(child.id), depth + 1)}
+          </div>
+        `;
+      }
+    });
+
+    return out;
+  }
+
+  function renderFolderSubtree(parentKey, depth) {
+    const kids = childrenMap.get(parentKey) || [];
+    let out = '';
+
+    kids.forEach(child => {
+      const hasChildren = (childrenMap.get(String(child.id)) || []).length > 0;
+
+      const toggleBtn = hasChildren
+        ? `<button type="button" class="fm-toggle" aria-label="Toggle" data-toggle-id="kids-${child.id}" data-state="closed">▶</button>`
+        : `<span class="fm-toggle fm-toggle-empty"></span>`;
+
+      out += `
+        <div class="fm-node fm-node-child" data-node="1" data-depth="${depth}" data-folderid="${child.id}" data-foldername="${escAttr(child.name)}">
+          <button
+            type="button"
+            class="fm-folder fm-folder-child"
+            data-folderid="${child.id}"
+            data-foldername="${escAttr(child.name)}"
+            data-parentid="${child.parent_id === null ? '' : child.parent_id}"
+            data-haschildren="${hasChildren ? '1' : '0'}"
+            onclick="selectFolder(this)">
+            <div class="fm-folder-row">
+              ${toggleBtn}
+              <div class="fm-folder-name">${'—'.repeat(depth)} ${child.name}</div>
+            </div>
+          </button>
+        </div>
+      `;
+
+      if (hasChildren) {
+        out += `
+          <div class="fm-children" id="kids-${child.id}" data-parent="${child.id}" style="display:none;">
+            ${renderFolderSubtree(String(child.id), depth + 1)}
+          </div>
+        `;
+      }
+    });
+
     return out;
   }
 %>
@@ -177,7 +255,6 @@
               <% if (isAdmin) { %>
                 &nbsp;|&nbsp;
                 <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
-                  <input type="hidden" name="return_to" value="/dashboard?open=fileModal">
                   <button class="link-danger" type="submit">Delete</button>
                 </form>
               <% } %>
@@ -202,10 +279,6 @@
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('userModal')">&times;</span>
     <h3>User Management</h3>
-
-    <div style="margin:8px 0 12px;">
-      <a class="back-link" href="/dashboard">Return to Dashboard</a>
-    </div>
 
     <div class="um-layout">
       <!-- LEFT: user list -->
@@ -242,7 +315,6 @@
           <div class="sub-card um-create">
             <h4>Create User</h4>
             <form method="POST" action="/admin/create-user">
-              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
               <input name="fullname" placeholder="Full Name" required>
               <input type="email" name="email" placeholder="Email" required>
               <input type="password" name="password" placeholder="Password" required>
@@ -262,8 +334,6 @@
             </p>
 
             <form id="updateUserForm" method="POST" action="" class="um-form">
-              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
-
               <div class="um-row">
                 <div>
                   <label class="label">Full Name</label>
@@ -336,13 +406,7 @@
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
-    <div style="margin:8px 0 12px;">
-      <a class="back-link" href="/dashboard">Return to Dashboard</a>
-    </div>
-
     <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
-      <input type="hidden" name="return_to" value="/dashboard?open=fileModal">
-
       <label class="label">Select Folder</label>
       <select name="folder_id" required>
         <%- renderFolderOptions('root', 0) %>
@@ -360,10 +424,6 @@
     <span class="close" onclick="closeModal('folderModal')">&times;</span>
     <h3>Folder Management</h3>
 
-    <div style="margin:8px 0 12px;">
-      <a class="back-link" href="/dashboard">Return to Dashboard</a>
-    </div>
-
     <div class="fm-layout">
 
       <!-- Column 1: Search + list -->
@@ -373,7 +433,8 @@
         </div>
 
         <div class="fm-folders" id="foldersContainer">
-          <%- renderFolderButtons('root', 0) %>
+          <!-- Only TOP-LEVEL folders visible initially; subfolders are hidden until expanded -->
+          <%- renderFolderTreeForList('root', 0, true) %>
         </div>
       </div>
 
@@ -384,8 +445,6 @@
 
           <% if (isAdmin) { %>
             <form method="POST" action="/folder">
-              <input type="hidden" name="return_to" value="/dashboard?open=folderModal">
-
               <label class="label">Folder Name</label>
               <input name="name" placeholder="Folder Name" required>
 
@@ -419,8 +478,6 @@
             </div>
 
             <form id="renameFolderForm" method="POST" action="">
-              <input type="hidden" name="return_to" value="/dashboard?open=folderModal">
-
               <label class="label">Rename To</label>
               <input id="fmNewName" name="new_name" placeholder="Enter new folder name" required disabled>
               <button id="fmRenameBtn" class="action-btn" type="submit" disabled>Rename Folder</button>
@@ -454,10 +511,6 @@
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('logsModal')">&times;</span>
     <h3>Activity Logs</h3>
-
-    <div style="margin:8px 0 12px;">
-      <a class="back-link" href="/dashboard">Return to Dashboard</a>
-    </div>
 
     <input id="logFilter" type="text" placeholder="Filter logs by user/action..." onkeyup="filterLogs()" />
 
@@ -496,16 +549,6 @@
 function openModal(id) { document.getElementById(id).style.display = 'block'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-/* ================= Auto-open modal based on URL (?open=folderModal etc) ================= */
-(function () {
-  const params = new URLSearchParams(window.location.search);
-  const open = params.get('open');
-  if (open) {
-    const el = document.getElementById(open);
-    if (el) openModal(open);
-  }
-})();
-
 /* ================= Toast Popups ================= */
 function showToast(message, type = "success") {
   const el = document.getElementById("toast");
@@ -528,11 +571,8 @@ function showToast(message, type = "success") {
   if (error) showToast(error, "error");
   if (info) showToast(info, "info");
 
-  // keep ?open=... but remove messages
   if (success || error || info) {
-    const open = params.get("open");
-    const clean = open ? (`/dashboard?open=${encodeURIComponent(open)}`) : "/dashboard";
-    window.history.replaceState({}, document.title, clean);
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 })();
 
@@ -632,28 +672,116 @@ function deleteSelectedUser() {
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = `/admin/users/${selectedUserId}/delete`;
-
-  const rt = document.createElement('input');
-  rt.type = 'hidden';
-  rt.name = 'return_to';
-  rt.value = '/dashboard?open=userModal';
-  f.appendChild(rt);
-
   document.body.appendChild(f);
   f.submit();
 }
 
-/* ================= Folder Management (3-column interactive) ================= */
+/* ================= Folder Management (Collapsible tree) ================= */
 let selectedFolderId = null;
+
+function toggleChildrenContainer(containerId, open) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.style.display = open ? 'block' : 'none';
+}
+
+function setToggleIcon(toggleEl, open) {
+  if (!toggleEl) return;
+  toggleEl.textContent = open ? '▼' : '▶';
+  toggleEl.dataset.state = open ? 'open' : 'closed';
+}
+
+function closeAllFolderExpansions() {
+  document.querySelectorAll('.fm-toggle[data-toggle-id]').forEach(t => setToggleIcon(t, false));
+  document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
+}
 
 function filterFolders() {
   const q = (document.getElementById('folderSearch').value || '').toLowerCase();
+
+  // If no query: collapse everything and show only top-level buttons
+  if (!q) {
+    closeAllFolderExpansions();
+
+    // Show ONLY root nodes
+    document.querySelectorAll('.fm-node').forEach(node => {
+      const depth = Number(node.dataset.depth || 0);
+      node.style.display = (depth === 0) ? '' : 'none';
+    });
+
+    return;
+  }
+
+  // Searching: show matches + expand parents so matches can be visible
+  // Step 1: hide all nodes initially
+  document.querySelectorAll('.fm-node').forEach(node => node.style.display = 'none');
+
+  // Step 2: find matching buttons, show them + their ancestors
+  const matches = [];
   document.querySelectorAll('.fm-folder').forEach(btn => {
-    btn.style.display = (btn.innerText || '').toLowerCase().includes(q) ? '' : 'none';
+    const text = (btn.dataset.foldername || btn.innerText || '').toLowerCase();
+    if (text.includes(q)) matches.push(btn);
+  });
+
+  // helper: show node by folder id
+  const showNode = (folderId) => {
+    const node = document.querySelector(`.fm-node[data-folderid="${folderId}"]`);
+    if (node) node.style.display = '';
+  };
+
+  // helper: expand parent chain
+  const expandChain = (btn) => {
+    let parentId = btn.dataset.parentid;
+    while (parentId) {
+      // show parent node
+      showNode(parentId);
+
+      // expand parent's children container
+      const containerId = `kids-${parentId}`;
+      toggleChildrenContainer(containerId, true);
+
+      // set toggle icon open
+      const toggle = document.querySelector(`.fm-toggle[data-toggle-id="${containerId}"]`);
+      setToggleIcon(toggle, true);
+
+      // climb up
+      const parentBtn = document.querySelector(`.fm-folder[data-folderid="${parentId}"]`);
+      parentId = parentBtn ? parentBtn.dataset.parentid : '';
+    }
+  };
+
+  // Show matches + expand their parents
+  matches.forEach(btn => {
+    showNode(btn.dataset.folderid);
+    expandChain(btn);
+  });
+
+  // Also ensure top-level nodes remain visible if they match or are ancestors
+  document.querySelectorAll('.fm-node').forEach(node => {
+    // if it is an ancestor already shown, keep it visible. (handled above)
   });
 }
 
+// Click to expand/collapse using event delegation (so it works for all levels)
+document.addEventListener('click', function(e) {
+  const t = e.target;
+  if (!t) return;
+
+  // Toggle clicked?
+  if (t.classList && t.classList.contains('fm-toggle') && t.dataset.toggleId) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const containerId = t.dataset.toggleId;
+    const isOpen = (t.dataset.state === 'open');
+
+    toggleChildrenContainer(containerId, !isOpen);
+    setToggleIcon(t, !isOpen);
+  }
+});
+
 function selectFolder(btn) {
+  // highlight selected folder button only (not the toggle)
   document.querySelectorAll('.fm-folder').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
@@ -693,13 +821,6 @@ function deleteSelectedFolder() {
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = `/folder/${selectedFolderId}/delete`;
-
-  const rt = document.createElement('input');
-  rt.type = 'hidden';
-  rt.name = 'return_to';
-  rt.value = '/dashboard?open=folderModal';
-  f.appendChild(rt);
-
   document.body.appendChild(f);
   f.submit();
 }

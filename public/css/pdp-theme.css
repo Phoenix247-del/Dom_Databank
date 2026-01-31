@@ -19,7 +19,6 @@ header {
 }
 
 .header-left { width: 150px; }
-
 .header-title { flex: 1; text-align: center; }
 
 /* Ensure "DIRECTORATE..." larger than "DATABANK" */
@@ -351,21 +350,71 @@ th {
   overflow: auto;
 }
 
+/* ===== Tree-style folders (Main folders visible; subfolders hidden until expanded) ===== */
+
+/* Row wrapper for a parent folder + toggle */
+.fm-folder-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid #f1f1f1;
+  background: #fff;
+}
+
+.fm-folder-row:hover { background: #f7fbf7; }
+
+/* Expand/collapse button (caret) */
+.fm-toggle {
+  width: 42px;
+  min-width: 42px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #006400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Folder clickable button */
 .fm-folder {
+  flex: 1;
   width: 100%;
   border: none;
-  background: #fff;
+  background: transparent;
   text-align: left;
   padding: 10px;
   cursor: pointer;
-  border-bottom: 1px solid #f1f1f1;
 }
-.fm-folder:hover { background: #f7fbf7; }
 .fm-folder.active { background: #e9f7ea; }
+.fm-folder:hover { background: transparent; } /* row handles hover */
 
 .fm-folder-name { font-weight: bold; color: #006400; }
 .fm-folder-meta { font-size: 12px; color: #555; margin-top: 2px; }
 
+/* Children container (hidden by default) */
+.fm-children {
+  display: none;
+  padding-left: 18px;   /* indentation */
+  background: #fff;
+}
+
+/* when expanded */
+.fm-children.show { display: block; }
+
+/* subfolder button style */
+.fm-subfolder {
+  border-left: 3px solid #e9f7ea;
+  margin-left: 10px;
+}
+
+/* a lighter look for subfolders */
+.fm-subfolder .fm-folder-name {
+  font-weight: 700;
+}
+
+/* right columns */
 .fm-create .sub-card,
 .fm-modify .sub-card {
   min-height: 70vh;
@@ -415,6 +464,39 @@ footer {
 .toast-success { background: #006400; }
 .toast-error   { background: #C00000; }
 .toast-info    { background: #333; }
+
+/* ================= SHOW/HIDE PASSWORD (Reusable) =================
+   Use this wrapper in login.ejs when you add the eye icon:
+   <div class="password-wrap">
+     <input ... id="password">
+     <button type="button" class="toggle-password" ...>👁</button>
+   </div>
+*/
+.password-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.password-wrap input {
+  padding-right: 44px; /* space for eye icon */
+}
+
+.toggle-password {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
 
 /* MOBILE */
 @media (max-width: 900px) {
