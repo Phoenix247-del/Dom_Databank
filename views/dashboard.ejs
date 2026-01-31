@@ -38,7 +38,6 @@
     parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
   }));
 
-  const folderById = new Map(allFolders.map(f => [String(f.id), f]));
   const childrenMap = new Map();
   allFolders.forEach(f => {
     const pid = f.parent_id === null ? 'root' : String(f.parent_id);
@@ -48,7 +47,7 @@
 
   function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
   (childrenMap.get('root') || []).sort(sortByName);
-  childrenMap.forEach((arr, key) => { arr.sort(sortByName); });
+  childrenMap.forEach((arr) => { arr.sort(sortByName); });
 
   function buildFolderLabel(f, depth) {
     const prefix = depth > 0 ? ('—'.repeat(depth) + ' ') : '';
@@ -178,6 +177,7 @@
               <% if (isAdmin) { %>
                 &nbsp;|&nbsp;
                 <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
+                  <input type="hidden" name="return_to" value="/dashboard?open=fileModal">
                   <button class="link-danger" type="submit">Delete</button>
                 </form>
               <% } %>
@@ -202,6 +202,10 @@
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('userModal')">&times;</span>
     <h3>User Management</h3>
+
+    <div style="margin:8px 0 12px;">
+      <a class="back-link" href="/dashboard">Return to Dashboard</a>
+    </div>
 
     <div class="um-layout">
       <!-- LEFT: user list -->
@@ -238,6 +242,7 @@
           <div class="sub-card um-create">
             <h4>Create User</h4>
             <form method="POST" action="/admin/create-user">
+              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
               <input name="fullname" placeholder="Full Name" required>
               <input type="email" name="email" placeholder="Email" required>
               <input type="password" name="password" placeholder="Password" required>
@@ -257,6 +262,8 @@
             </p>
 
             <form id="updateUserForm" method="POST" action="" class="um-form">
+              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
+
               <div class="um-row">
                 <div>
                   <label class="label">Full Name</label>
@@ -329,7 +336,13 @@
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
+    <div style="margin:8px 0 12px;">
+      <a class="back-link" href="/dashboard">Return to Dashboard</a>
+    </div>
+
     <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
+      <input type="hidden" name="return_to" value="/dashboard?open=fileModal">
+
       <label class="label">Select Folder</label>
       <select name="folder_id" required>
         <%- renderFolderOptions('root', 0) %>
@@ -346,6 +359,10 @@
   <div class="modal-content modal-wide modal-full">
     <span class="close" onclick="closeModal('folderModal')">&times;</span>
     <h3>Folder Management</h3>
+
+    <div style="margin:8px 0 12px;">
+      <a class="back-link" href="/dashboard">Return to Dashboard</a>
+    </div>
 
     <div class="fm-layout">
 
@@ -367,6 +384,8 @@
 
           <% if (isAdmin) { %>
             <form method="POST" action="/folder">
+              <input type="hidden" name="return_to" value="/dashboard?open=folderModal">
+
               <label class="label">Folder Name</label>
               <input name="name" placeholder="Folder Name" required>
 
@@ -400,6 +419,8 @@
             </div>
 
             <form id="renameFolderForm" method="POST" action="">
+              <input type="hidden" name="return_to" value="/dashboard?open=folderModal">
+
               <label class="label">Rename To</label>
               <input id="fmNewName" name="new_name" placeholder="Enter new folder name" required disabled>
               <button id="fmRenameBtn" class="action-btn" type="submit" disabled>Rename Folder</button>
@@ -433,6 +454,10 @@
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('logsModal')">&times;</span>
     <h3>Activity Logs</h3>
+
+    <div style="margin:8px 0 12px;">
+      <a class="back-link" href="/dashboard">Return to Dashboard</a>
+    </div>
 
     <input id="logFilter" type="text" placeholder="Filter logs by user/action..." onkeyup="filterLogs()" />
 
@@ -471,6 +496,16 @@
 function openModal(id) { document.getElementById(id).style.display = 'block'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
+/* ================= Auto-open modal based on URL (?open=folderModal etc) ================= */
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const open = params.get('open');
+  if (open) {
+    const el = document.getElementById(open);
+    if (el) openModal(open);
+  }
+})();
+
 /* ================= Toast Popups ================= */
 function showToast(message, type = "success") {
   const el = document.getElementById("toast");
@@ -493,8 +528,11 @@ function showToast(message, type = "success") {
   if (error) showToast(error, "error");
   if (info) showToast(info, "info");
 
+  // keep ?open=... but remove messages
   if (success || error || info) {
-    window.history.replaceState({}, document.title, window.location.pathname);
+    const open = params.get("open");
+    const clean = open ? (`/dashboard?open=${encodeURIComponent(open)}`) : "/dashboard";
+    window.history.replaceState({}, document.title, clean);
   }
 })();
 
@@ -594,6 +632,13 @@ function deleteSelectedUser() {
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = `/admin/users/${selectedUserId}/delete`;
+
+  const rt = document.createElement('input');
+  rt.type = 'hidden';
+  rt.name = 'return_to';
+  rt.value = '/dashboard?open=userModal';
+  f.appendChild(rt);
+
   document.body.appendChild(f);
   f.submit();
 }
@@ -648,6 +693,13 @@ function deleteSelectedFolder() {
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = `/folder/${selectedFolderId}/delete`;
+
+  const rt = document.createElement('input');
+  rt.type = 'hidden';
+  rt.name = 'return_to';
+  rt.value = '/dashboard?open=folderModal';
+  f.appendChild(rt);
+
   document.body.appendChild(f);
   f.submit();
 }
