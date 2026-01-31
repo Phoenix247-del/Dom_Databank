@@ -40,17 +40,22 @@
 
   const childrenMap = new Map();
   allFolders.forEach(f => {
-    const pid = (f.parent_id === null) ? 'root' : String(f.parent_id);
+    const pid = f.parent_id === null ? 'root' : String(f.parent_id);
     if (!childrenMap.has(pid)) childrenMap.set(pid, []);
     childrenMap.get(pid).push(f);
   });
 
   function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
   (childrenMap.get('root') || []).sort(sortByName);
-  childrenMap.forEach((arr) => arr.sort(sortByName));
+  childrenMap.forEach(arr => arr.sort(sortByName));
 
-  function escAttr(s) {
-    return String(s || '').replace(/"/g,'&quot;');
+  function escHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   function buildFolderLabel(f, depth) {
@@ -58,61 +63,48 @@
     return prefix + f.name;
   }
 
-  // Full recursive options for selects (used in Create Inside dropdown & upload)
+  // Options for selects (includes nested visually, but still selectable)
   function renderFolderOptions(parentKey, depth) {
     const kids = childrenMap.get(parentKey) || [];
     let out = '';
     kids.forEach(child => {
-      out += `<option value="${child.id}">${buildFolderLabel(child, depth)}</option>`;
+      out += `<option value="${child.id}">${escHtml(buildFolderLabel(child, depth))}</option>`;
       out += renderFolderOptions(String(child.id), depth + 1);
     });
     return out;
   }
 
-  /**
-   * Folder list for Folder Management LEFT COLUMN:
-   * - Only show TOP-LEVEL folders by default
-   * - Each top-level can expand/collapse its subtree
-   * - Subtree is wrapped in a container that is hidden until expanded
-   */
-  function renderFolderTreeForList(parentKey, depth, rootOnly) {
+  // Collapsible list:
+  // - ONLY root folders shown at top
+  // - Subfolders visible only when parent <details> is open
+  function renderFolderTreeDetails(parentKey, depth) {
     const kids = childrenMap.get(parentKey) || [];
     let out = '';
 
     kids.forEach(child => {
-      const hasChildren = (childrenMap.get(String(child.id)) || []).length > 0;
+      const childKey = String(child.id);
+      const hasChildren = (childrenMap.get(childKey) || []).length > 0;
 
-      // If rootOnly, we only render depth 0 items here.
-      if (rootOnly && depth > 0) return;
-
-      const toggleBtn = hasChildren
-        ? `<button type="button" class="fm-toggle" aria-label="Toggle" data-toggle-id="kids-${child.id}" data-state="closed">▶</button>`
-        : `<span class="fm-toggle fm-toggle-empty"></span>`;
-
-      out += `
-        <div class="fm-node" data-node="1" data-depth="${depth}" data-folderid="${child.id}" data-foldername="${escAttr(child.name)}">
-          <button
-            type="button"
-            class="fm-folder"
-            data-folderid="${child.id}"
-            data-foldername="${escAttr(child.name)}"
-            data-parentid="${child.parent_id === null ? '' : child.parent_id}"
-            data-haschildren="${hasChildren ? '1' : '0'}"
-            onclick="selectFolder(this)">
-            <div class="fm-folder-row">
-              ${toggleBtn}
-              <div class="fm-folder-name">${child.name}</div>
-            </div>
-          </button>
-        </div>
-      `;
-
-      // Render subtree container (hidden) – contains all children recursively
-      if (hasChildren) {
+      // Root items: use <details> so subfolders are hidden until expanded
+      if (depth === 0) {
         out += `
-          <div class="fm-children" id="kids-${child.id}" data-parent="${child.id}" style="display:none;">
-            ${renderFolderSubtree(String(child.id), depth + 1)}
-          </div>
+          <details class="fm-node" data-foldername="${escHtml(child.name).toLowerCase()}">
+            <summary class="fm-summary">
+              <button
+                type="button"
+                class="fm-folder fm-folder-main"
+                data-folderid="${child.id}"
+                data-foldername="${escHtml(child.name)}"
+                onclick="selectFolder(this); event.preventDefault();">
+                <div class="fm-folder-name">${escHtml(child.name)}</div>
+                <div class="fm-folder-meta">${hasChildren ? 'Has subfolders' : 'No subfolders'}</div>
+              </button>
+            </summary>
+
+            <div class="fm-children">
+              ${hasChildren ? renderFolderTreeButtons(childKey, depth + 1) : `<div class="fm-empty">No subfolders</div>`}
+            </div>
+          </details>
         `;
       }
     });
@@ -120,42 +112,33 @@
     return out;
   }
 
-  function renderFolderSubtree(parentKey, depth) {
+  // Child buttons rendered ONLY inside opened parent
+  function renderFolderTreeButtons(parentKey, depth) {
     const kids = childrenMap.get(parentKey) || [];
     let out = '';
 
     kids.forEach(child => {
-      const hasChildren = (childrenMap.get(String(child.id)) || []).length > 0;
-
-      const toggleBtn = hasChildren
-        ? `<button type="button" class="fm-toggle" aria-label="Toggle" data-toggle-id="kids-${child.id}" data-state="closed">▶</button>`
-        : `<span class="fm-toggle fm-toggle-empty"></span>`;
+      const childKey = String(child.id);
+      const hasChildren = (childrenMap.get(childKey) || []).length > 0;
 
       out += `
-        <div class="fm-node fm-node-child" data-node="1" data-depth="${depth}" data-folderid="${child.id}" data-foldername="${escAttr(child.name)}">
-          <button
-            type="button"
-            class="fm-folder fm-folder-child"
-            data-folderid="${child.id}"
-            data-foldername="${escAttr(child.name)}"
-            data-parentid="${child.parent_id === null ? '' : child.parent_id}"
-            data-haschildren="${hasChildren ? '1' : '0'}"
-            onclick="selectFolder(this)">
-            <div class="fm-folder-row">
-              ${toggleBtn}
-              <div class="fm-folder-name">${'—'.repeat(depth)} ${child.name}</div>
-            </div>
-          </button>
-        </div>
+        <button
+          type="button"
+          class="fm-folder fm-folder-sub"
+          data-folderid="${child.id}"
+          data-foldername="${escHtml(child.name)}"
+          data-parentid="${escHtml(parentKey)}"
+          data-folderpath="${escHtml(buildFolderLabel(child, depth))}"
+          onclick="selectFolder(this)">
+          <div class="fm-folder-name">${escHtml(buildFolderLabel(child, depth))}</div>
+          <div class="fm-folder-meta">${hasChildren ? 'Has subfolders' : ''}</div>
+        </button>
       `;
 
-      if (hasChildren) {
-        out += `
-          <div class="fm-children" id="kids-${child.id}" data-parent="${child.id}" style="display:none;">
-            ${renderFolderSubtree(String(child.id), depth + 1)}
-          </div>
-        `;
-      }
+      // deeper nesting inside same open branch (still hidden until their parent is opened? optional)
+      // For now: keep it simple and show nested levels only when their parent root is opened.
+      // If you want deeper levels collapsible too, tell me and I’ll convert children to nested <details>.
+      out += renderFolderTreeButtons(childKey, depth + 1);
     });
 
     return out;
@@ -219,7 +202,6 @@
 
       <h3 class="recent-title">Recent Files</h3>
 
-      <!-- Best-effort screenshot deterrence applies to non-admin users -->
       <div id="protectedArea" class="protected-area recent-files-area">
         <table class="recent-table">
           <tr>
@@ -426,15 +408,16 @@
 
     <div class="fm-layout">
 
-      <!-- Column 1: Search + list -->
+      <!-- Column 1: Search + list (ONLY MAIN FOLDERS, subfolders hidden until expanded) -->
       <div class="fm-list">
         <div class="fm-toolbar">
           <input id="folderSearch" type="text" placeholder="Search folders..." onkeyup="filterFolders()">
         </div>
 
         <div class="fm-folders" id="foldersContainer">
-          <!-- Only TOP-LEVEL folders visible initially; subfolders are hidden until expanded -->
-          <%- renderFolderTreeForList('root', 0, true) %>
+          <div class="fm-tree">
+            <%- renderFolderTreeDetails('root', 0) %>
+          </div>
         </div>
       </div>
 
@@ -676,112 +659,49 @@ function deleteSelectedUser() {
   f.submit();
 }
 
-/* ================= Folder Management (Collapsible tree) ================= */
+/* ================= Folder Management (collapse + select) ================= */
 let selectedFolderId = null;
-
-function toggleChildrenContainer(containerId, open) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  el.style.display = open ? 'block' : 'none';
-}
-
-function setToggleIcon(toggleEl, open) {
-  if (!toggleEl) return;
-  toggleEl.textContent = open ? '▼' : '▶';
-  toggleEl.dataset.state = open ? 'open' : 'closed';
-}
-
-function closeAllFolderExpansions() {
-  document.querySelectorAll('.fm-toggle[data-toggle-id]').forEach(t => setToggleIcon(t, false));
-  document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
-}
 
 function filterFolders() {
   const q = (document.getElementById('folderSearch').value || '').toLowerCase();
+  const nodes = document.querySelectorAll('.fm-node');
+  const allButtons = document.querySelectorAll('.fm-folder');
 
-  // If no query: collapse everything and show only top-level buttons
+  // Reset: show all nodes, close all (unless search is empty)
   if (!q) {
-    closeAllFolderExpansions();
-
-    // Show ONLY root nodes
-    document.querySelectorAll('.fm-node').forEach(node => {
-      const depth = Number(node.dataset.depth || 0);
-      node.style.display = (depth === 0) ? '' : 'none';
-    });
-
+    nodes.forEach(d => d.open = false);
+    allButtons.forEach(b => b.style.display = '');
+    nodes.forEach(d => d.style.display = '');
     return;
   }
 
-  // Searching: show matches + expand parents so matches can be visible
-  // Step 1: hide all nodes initially
-  document.querySelectorAll('.fm-node').forEach(node => node.style.display = 'none');
+  // For each root <details>, we show it if either:
+  // - its root folder matches, OR
+  // - any of its descendants matches
+  nodes.forEach(details => {
+    const rootBtn = details.querySelector('.fm-folder-main');
+    const rootText = (rootBtn?.innerText || '').toLowerCase();
 
-  // Step 2: find matching buttons, show them + their ancestors
-  const matches = [];
-  document.querySelectorAll('.fm-folder').forEach(btn => {
-    const text = (btn.dataset.foldername || btn.innerText || '').toLowerCase();
-    if (text.includes(q)) matches.push(btn);
-  });
+    const childBtns = details.querySelectorAll('.fm-folder-sub');
+    let childMatch = false;
+    childBtns.forEach(b => {
+      const t = (b.innerText || '').toLowerCase();
+      const match = t.includes(q);
+      b.style.display = match ? '' : 'none';
+      if (match) childMatch = true;
+    });
 
-  // helper: show node by folder id
-  const showNode = (folderId) => {
-    const node = document.querySelector(`.fm-node[data-folderid="${folderId}"]`);
-    if (node) node.style.display = '';
-  };
+    const rootMatch = rootText.includes(q);
 
-  // helper: expand parent chain
-  const expandChain = (btn) => {
-    let parentId = btn.dataset.parentid;
-    while (parentId) {
-      // show parent node
-      showNode(parentId);
+    // show/hide root block
+    details.style.display = (rootMatch || childMatch) ? '' : 'none';
 
-      // expand parent's children container
-      const containerId = `kids-${parentId}`;
-      toggleChildrenContainer(containerId, true);
-
-      // set toggle icon open
-      const toggle = document.querySelector(`.fm-toggle[data-toggle-id="${containerId}"]`);
-      setToggleIcon(toggle, true);
-
-      // climb up
-      const parentBtn = document.querySelector(`.fm-folder[data-folderid="${parentId}"]`);
-      parentId = parentBtn ? parentBtn.dataset.parentid : '';
-    }
-  };
-
-  // Show matches + expand their parents
-  matches.forEach(btn => {
-    showNode(btn.dataset.folderid);
-    expandChain(btn);
-  });
-
-  // Also ensure top-level nodes remain visible if they match or are ancestors
-  document.querySelectorAll('.fm-node').forEach(node => {
-    // if it is an ancestor already shown, keep it visible. (handled above)
+    // If match is in children, auto-open parent so you can see it
+    details.open = childMatch || rootMatch;
   });
 }
 
-// Click to expand/collapse using event delegation (so it works for all levels)
-document.addEventListener('click', function(e) {
-  const t = e.target;
-  if (!t) return;
-
-  // Toggle clicked?
-  if (t.classList && t.classList.contains('fm-toggle') && t.dataset.toggleId) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const containerId = t.dataset.toggleId;
-    const isOpen = (t.dataset.state === 'open');
-
-    toggleChildrenContainer(containerId, !isOpen);
-    setToggleIcon(t, !isOpen);
-  }
-});
-
 function selectFolder(btn) {
-  // highlight selected folder button only (not the toggle)
   document.querySelectorAll('.fm-folder').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
