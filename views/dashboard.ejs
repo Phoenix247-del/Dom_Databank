@@ -38,6 +38,7 @@
     parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
   }));
 
+  const folderById = new Map(allFolders.map(f => [String(f.id), f]));
   const childrenMap = new Map();
   allFolders.forEach(f => {
     const pid = f.parent_id === null ? 'root' : String(f.parent_id);
@@ -47,98 +48,57 @@
 
   function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
   (childrenMap.get('root') || []).sort(sortByName);
-  childrenMap.forEach(arr => arr.sort(sortByName));
-
-  function escHtml(s) {
-    return String(s || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
+  childrenMap.forEach((arr, key) => { arr.sort(sortByName); });
 
   function buildFolderLabel(f, depth) {
     const prefix = depth > 0 ? ('—'.repeat(depth) + ' ') : '';
     return prefix + f.name;
   }
 
-  // Options for selects (includes nested visually, but still selectable)
   function renderFolderOptions(parentKey, depth) {
     const kids = childrenMap.get(parentKey) || [];
     let out = '';
     kids.forEach(child => {
-      out += `<option value="${child.id}">${escHtml(buildFolderLabel(child, depth))}</option>`;
+      out += `<option value="${child.id}">${buildFolderLabel(child, depth)}</option>`;
       out += renderFolderOptions(String(child.id), depth + 1);
     });
     return out;
   }
 
-  // Collapsible list:
-  // - ONLY root folders shown at top
-  // - Subfolders visible only when parent <details> is open
-  function renderFolderTreeDetails(parentKey, depth) {
-    const kids = childrenMap.get(parentKey) || [];
-    let out = '';
-
-    kids.forEach(child => {
-      const childKey = String(child.id);
-      const hasChildren = (childrenMap.get(childKey) || []).length > 0;
-
-      // Root items: use <details> so subfolders are hidden until expanded
-      if (depth === 0) {
-        out += `
-          <details class="fm-node" data-foldername="${escHtml(child.name).toLowerCase()}">
-            <summary class="fm-summary">
-              <button
-                type="button"
-                class="fm-folder fm-folder-main"
-                data-folderid="${child.id}"
-                data-foldername="${escHtml(child.name)}"
-                onclick="selectFolder(this); event.preventDefault();">
-                <div class="fm-folder-name">${escHtml(child.name)}</div>
-                <div class="fm-folder-meta">${hasChildren ? 'Has subfolders' : 'No subfolders'}</div>
-              </button>
-            </summary>
-
-            <div class="fm-children">
-              ${hasChildren ? renderFolderTreeButtons(childKey, depth + 1) : `<div class="fm-empty">No subfolders</div>`}
-            </div>
-          </details>
-        `;
-      }
-    });
-
-    return out;
+  // ===== Windows-style Folder Tiles (collapsible tree) =====
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // Child buttons rendered ONLY inside opened parent
-  function renderFolderTreeButtons(parentKey, depth) {
+  function renderFolderTiles(parentKey, depth) {
     const kids = childrenMap.get(parentKey) || [];
     let out = '';
 
     kids.forEach(child => {
-      const childKey = String(child.id);
-      const hasChildren = (childrenMap.get(childKey) || []).length > 0;
+      const childId = String(child.id);
+      const hasChildren = (childrenMap.get(childId) || []).length > 0;
 
       out += `
-        <button
-          type="button"
-          class="fm-folder fm-folder-sub"
-          data-folderid="${child.id}"
-          data-foldername="${escHtml(child.name)}"
-          data-parentid="${escHtml(parentKey)}"
-          data-folderpath="${escHtml(buildFolderLabel(child, depth))}"
-          onclick="selectFolder(this)">
-          <div class="fm-folder-name">${escHtml(buildFolderLabel(child, depth))}</div>
-          <div class="fm-folder-meta">${hasChildren ? 'Has subfolders' : ''}</div>
-        </button>
-      `;
+        <div class="fm-node" data-nodeid="${childId}" data-depth="${depth}">
+          <button
+            type="button"
+            class="fm-tile"
+            data-folderid="${childId}"
+            data-foldername="${esc(child.name)}"
+            data-haschildren="${hasChildren ? '1' : '0'}"
+            onclick="onFolderTileClick(event, this)">
+            <div class="fm-icon" aria-hidden="true"></div>
+            <div class="fm-tile-name">${esc(child.name)}</div>
+            ${hasChildren ? `<div class="fm-toggle" title="Expand/Collapse" aria-label="Expand/Collapse"></div>` : ``}
+          </button>
 
-      // deeper nesting inside same open branch (still hidden until their parent is opened? optional)
-      // For now: keep it simple and show nested levels only when their parent root is opened.
-      // If you want deeper levels collapsible too, tell me and I’ll convert children to nested <details>.
-      out += renderFolderTreeButtons(childKey, depth + 1);
+          ${hasChildren ? `
+            <div class="fm-children" data-parent="${childId}" style="display:none;">
+              ${renderFolderTiles(childId, depth + 1)}
+            </div>
+          ` : ``}
+        </div>
+      `;
     });
 
     return out;
@@ -263,7 +223,6 @@
     <h3>User Management</h3>
 
     <div class="um-layout">
-      <!-- LEFT: user list -->
       <div class="um-list">
         <div class="um-toolbar">
           <input id="userSearch" type="text" placeholder="Search users..." onkeyup="filterUsers()">
@@ -289,11 +248,9 @@
         </div>
       </div>
 
-      <!-- RIGHT: create + modify SIDE-BY-SIDE -->
       <div class="um-panel">
         <div class="um-panel-grid">
 
-          <!-- Create user -->
           <div class="sub-card um-create">
             <h4>Create User</h4>
             <form method="POST" action="/admin/create-user">
@@ -308,7 +265,6 @@
             </form>
           </div>
 
-          <!-- Modify selected user -->
           <div class="sub-card um-modify">
             <h4>Modify User</h4>
             <p class="hint small" id="umHint">
@@ -360,7 +316,6 @@
 
               <div class="um-actions">
                 <button id="umSaveBtn" class="action-btn small" type="submit" disabled>Save Changes</button>
-
                 <button id="umDeleteBtn" class="link-danger" type="button" disabled onclick="deleteSelectedUser()">
                   Delete User
                 </button>
@@ -408,16 +363,17 @@
 
     <div class="fm-layout">
 
-      <!-- Column 1: Search + list (ONLY MAIN FOLDERS, subfolders hidden until expanded) -->
+      <!-- Column 1: Search + ICON GRID (only main folders shown initially) -->
       <div class="fm-list">
         <div class="fm-toolbar">
           <input id="folderSearch" type="text" placeholder="Search folders..." onkeyup="filterFolders()">
+          <div class="hint small" style="margin:8px 0 0;">
+            Main folders are shown first. Click the small arrow on a folder to expand/collapse its subfolders.
+          </div>
         </div>
 
-        <div class="fm-folders" id="foldersContainer">
-          <div class="fm-tree">
-            <%- renderFolderTreeDetails('root', 0) %>
-          </div>
+        <div class="fm-folders fm-grid" id="foldersContainer">
+          <%- renderFolderTiles('root', 0) %>
         </div>
       </div>
 
@@ -450,7 +406,7 @@
       <div class="fm-modify">
         <div class="sub-card">
           <h4>Modify Folder</h4>
-          <p class="hint small" id="fmHint">Select a folder from the list to rename or delete.</p>
+          <p class="hint small" id="fmHint">Select a folder from the grid to rename, delete, or open.</p>
 
           <% if (isAdmin) { %>
 
@@ -659,57 +615,32 @@ function deleteSelectedUser() {
   f.submit();
 }
 
-/* ================= Folder Management (collapse + select) ================= */
+/* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
 let selectedFolderId = null;
 
-function filterFolders() {
-  const q = (document.getElementById('folderSearch').value || '').toLowerCase();
-  const nodes = document.querySelectorAll('.fm-node');
-  const allButtons = document.querySelectorAll('.fm-folder');
+function onFolderTileClick(e, tile) {
+  // If user clicked the toggle arrow, expand/collapse ONLY
+  const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
+  const folderId = tile.dataset.folderid;
 
-  // Reset: show all nodes, close all (unless search is empty)
-  if (!q) {
-    nodes.forEach(d => d.open = false);
-    allButtons.forEach(b => b.style.display = '');
-    nodes.forEach(d => d.style.display = '');
+  if (toggleClicked) {
+    toggleFolderChildren(folderId);
     return;
   }
 
-  // For each root <details>, we show it if either:
-  // - its root folder matches, OR
-  // - any of its descendants matches
-  nodes.forEach(details => {
-    const rootBtn = details.querySelector('.fm-folder-main');
-    const rootText = (rootBtn?.innerText || '').toLowerCase();
-
-    const childBtns = details.querySelectorAll('.fm-folder-sub');
-    let childMatch = false;
-    childBtns.forEach(b => {
-      const t = (b.innerText || '').toLowerCase();
-      const match = t.includes(q);
-      b.style.display = match ? '' : 'none';
-      if (match) childMatch = true;
-    });
-
-    const rootMatch = rootText.includes(q);
-
-    // show/hide root block
-    details.style.display = (rootMatch || childMatch) ? '' : 'none';
-
-    // If match is in children, auto-open parent so you can see it
-    details.open = childMatch || rootMatch;
-  });
+  // Otherwise select folder
+  selectFolderTile(tile);
 }
 
-function selectFolder(btn) {
-  document.querySelectorAll('.fm-folder').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+function selectFolderTile(tile) {
+  document.querySelectorAll('.fm-tile').forEach(b => b.classList.remove('active'));
+  tile.classList.add('active');
 
-  selectedFolderId = btn.dataset.folderid;
-  const folderName = btn.dataset.foldername || '';
+  selectedFolderId = tile.dataset.folderid;
+  const folderName = tile.dataset.foldername || '';
 
-  const idEl = document.getElementById('fmFolderId');
   const nameEl = document.getElementById('fmFolderName');
+  const idEl = document.getElementById('fmFolderId');
   const newNameEl = document.getElementById('fmNewName');
   const renameBtn = document.getElementById('fmRenameBtn');
   const deleteBtn = document.getElementById('fmDeleteBtn');
@@ -732,6 +663,62 @@ function selectFolder(btn) {
   }
 
   if (hint) hint.innerText = `Selected: ${folderName} (ID: ${selectedFolderId})`;
+}
+
+function toggleFolderChildren(folderId) {
+  const box = document.querySelector(`.fm-children[data-parent="${folderId}"]`);
+  if (!box) return;
+
+  const isOpen = box.style.display !== 'none';
+  box.style.display = isOpen ? 'none' : 'grid';
+
+  // Toggle arrow state
+  const node = document.querySelector(`.fm-node[data-nodeid="${folderId}"]`);
+  if (node) node.classList.toggle('open', !isOpen);
+}
+
+function filterFolders() {
+  const q = (document.getElementById('folderSearch').value || '').toLowerCase().trim();
+  const nodes = Array.from(document.querySelectorAll('.fm-node'));
+
+  if (!q) {
+    // reset: show roots, hide all children containers
+    nodes.forEach(n => n.style.display = '');
+    document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
+    document.querySelectorAll('.fm-node').forEach(n => n.classList.remove('open'));
+    return;
+  }
+
+  // basic filter: show nodes whose name matches; also show their ancestors
+  const tiles = Array.from(document.querySelectorAll('.fm-tile'));
+  const matchedIds = new Set();
+
+  tiles.forEach(t => {
+    const name = (t.dataset.foldername || '').toLowerCase();
+    if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
+  });
+
+  // helper: walk up by DOM parents
+  function showAncestors(nodeEl) {
+    let p = nodeEl.parentElement;
+    while (p) {
+      if (p.classList && p.classList.contains('fm-children')) {
+        p.style.display = 'grid';
+        const pid = p.getAttribute('data-parent');
+        const parentNode = document.querySelector(`.fm-node[data-nodeid="${pid}"]`);
+        if (parentNode) parentNode.classList.add('open');
+      }
+      p = p.parentElement;
+    }
+  }
+
+  nodes.forEach(n => {
+    const tile = n.querySelector('.fm-tile');
+    const id = tile ? String(tile.dataset.folderid) : '';
+    const show = matchedIds.has(id);
+    n.style.display = show ? '' : 'none';
+    if (show) showAncestors(n);
+  });
 }
 
 function deleteSelectedFolder() {
