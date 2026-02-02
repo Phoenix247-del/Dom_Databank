@@ -10,10 +10,7 @@ const { isAuthenticated, isAdmin } = require('../middleware/auth.middleware');
 /* ================= Helpers ================= */
 function safeReturnTo(req, fallback) {
   const candidate = (req.body?.return_to || req.query?.return_to || '').toString().trim();
-
-  // Only allow returning back to dashboard (prevents open redirects)
   if (candidate.startsWith('/dashboard')) return candidate;
-
   return fallback || '/dashboard';
 }
 
@@ -31,6 +28,7 @@ function redirectWithMessage(req, res, type, message, fallback) {
 router.get('/dashboard', isAuthenticated, (req, res) => {
   const user = req.session.user;
 
+  // Files query
   let filesSql = 'SELECT * FROM files ORDER BY uploaded_at DESC';
   let filesParams = [];
 
@@ -52,6 +50,7 @@ router.get('/dashboard', isAuthenticated, (req, res) => {
       return res.status(500).send('Error loading files');
     }
 
+    // Folders query
     let foldersSql = 'SELECT * FROM folders ORDER BY created_at DESC';
     let foldersParams = [];
 
@@ -73,6 +72,7 @@ router.get('/dashboard', isAuthenticated, (req, res) => {
         return res.status(500).send('Error loading folders');
       }
 
+      // Non-admin render
       if (user.role !== 'admin') {
         return res.render('dashboard', {
           user,
@@ -86,6 +86,7 @@ router.get('/dashboard', isAuthenticated, (req, res) => {
         });
       }
 
+      // Admin extras: logs + users + assignments
       const logsSql = `
         SELECT 
           al.id,
@@ -145,33 +146,35 @@ router.post('/admin/create-user', isAuthenticated, isAdmin, async (req, res) => 
     const password = (req.body.password || '').trim();
     const role = (req.body.role || 'user').trim();
 
-    const fallback = '/dashboard?open=userModal';
-
     if (!fullname || !email || !password) {
-      return redirectWithMessage(req, res, 'error', 'Please fill all fields.', fallback);
+      return redirectWithMessage(req, res, 'error', 'Please fill all fields.', '/dashboard?open=userModal');
     }
 
     db.query('SELECT id FROM users WHERE email = ?', [email], async (err, rows) => {
       if (err) {
         console.error('Create user check error:', err);
-        return redirectWithMessage(req, res, 'error', 'Could not create user (DB error).', fallback);
+        return redirectWithMessage(req, res, 'error', 'Could not create user (DB error).', '/dashboard?open=userModal');
       }
 
       if (rows && rows.length) {
-        return redirectWithMessage(req, res, 'error', 'This email already exists.', fallback);
+        return redirectWithMessage(req, res, 'error', 'This email already exists.', '/dashboard?open=userModal');
       }
 
       const hash = await bcrypt.hash(password, 10);
 
+      const can_search = 0;
+      const can_preview = 0;
+      const can_print = 0;
+
       db.query(
         'INSERT INTO users (fullname, email, password, role, can_search, can_preview, can_print) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [fullname, email, hash, role, 0, 0, 0],
+        [fullname, email, hash, role, can_search, can_preview, can_print],
         (err2) => {
           if (err2) {
             console.error('Create user insert error:', err2);
-            return redirectWithMessage(req, res, 'error', 'Could not create user.', fallback);
+            return redirectWithMessage(req, res, 'error', 'Could not create user.', '/dashboard?open=userModal');
           }
-          return redirectWithMessage(req, res, 'success', 'User created successfully.', fallback);
+          return redirectWithMessage(req, res, 'success', 'User created successfully.', '/dashboard?open=userModal');
         }
       );
     });
@@ -185,12 +188,11 @@ router.post('/admin/create-user', isAuthenticated, isAdmin, async (req, res) => 
 router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) => {
   const adminUser = req.session.user;
   const userId = Number(req.params.userId);
-  const fallback = '/dashboard?open=userModal';
 
-  if (!userId) return redirectWithMessage(req, res, 'error', 'Invalid user.', fallback);
+  if (!userId) return redirectWithMessage(req, res, 'error', 'Invalid user.', '/dashboard?open=userModal');
 
   if (Number(adminUser.id) === userId) {
-    return redirectWithMessage(req, res, 'error', 'You cannot modify your own admin privileges here.', fallback);
+    return redirectWithMessage(req, res, 'error', 'You cannot modify your own admin privileges here.', '/dashboard?open=userModal');
   }
 
   const role = (req.body.role || 'user').trim();
@@ -208,21 +210,21 @@ router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) 
     (err) => {
       if (err) {
         console.error('Update user error:', err);
-        return redirectWithMessage(req, res, 'error', 'Could not update user.', fallback);
+        return redirectWithMessage(req, res, 'error', 'Could not update user.', '/dashboard?open=userModal');
       }
 
       db.query('DELETE FROM user_folder_access WHERE user_id = ?', [userId], (err2) => {
         if (err2) {
           console.error('Delete folder access error:', err2);
-          return redirectWithMessage(req, res, 'error', 'Could not update folder assignments.', fallback);
+          return redirectWithMessage(req, res, 'error', 'Could not update folder assignments.', '/dashboard?open=userModal');
         }
 
         if (role === 'admin') {
-          return redirectWithMessage(req, res, 'success', 'User updated successfully.', fallback);
+          return redirectWithMessage(req, res, 'success', 'User updated successfully.', '/dashboard?open=userModal');
         }
 
         if (!folderIds.length) {
-          return redirectWithMessage(req, res, 'success', 'User updated (no folders assigned).', fallback);
+          return redirectWithMessage(req, res, 'success', 'User updated (no folders assigned).', '/dashboard?open=userModal');
         }
 
         const values = folderIds.map(fid => [userId, fid]);
@@ -231,7 +233,7 @@ router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) 
           [values],
           (err3) => {
             if (err3) console.error('Insert folder access error:', err3);
-            return redirectWithMessage(req, res, 'success', 'User updated successfully.', fallback);
+            return redirectWithMessage(req, res, 'success', 'User updated successfully.', '/dashboard?open=userModal');
           }
         );
       });
@@ -243,40 +245,39 @@ router.post('/admin/users/:userId/update', isAuthenticated, isAdmin, (req, res) 
 router.post('/admin/users/:userId/delete', isAuthenticated, isAdmin, (req, res) => {
   const adminUser = req.session.user;
   const userId = Number(req.params.userId);
-  const fallback = '/dashboard?open=userModal';
 
-  if (!userId) return redirectWithMessage(req, res, 'error', 'Invalid user.', fallback);
+  if (!userId) return redirectWithMessage(req, res, 'error', 'Invalid user.', '/dashboard?open=userModal');
 
   if (Number(adminUser.id) === userId) {
-    return redirectWithMessage(req, res, 'error', 'You cannot delete your own admin account.', fallback);
+    return redirectWithMessage(req, res, 'error', 'You cannot delete your own admin account.', '/dashboard?open=userModal');
   }
 
   db.query('SELECT role FROM users WHERE id = ?', [userId], (err, rows) => {
     if (err) {
       console.error('Delete user role check error:', err);
-      return redirectWithMessage(req, res, 'error', 'Could not delete user.', fallback);
+      return redirectWithMessage(req, res, 'error', 'Could not delete user.', '/dashboard?open=userModal');
     }
 
     if (!rows || !rows.length) {
-      return redirectWithMessage(req, res, 'error', 'User not found.', fallback);
+      return redirectWithMessage(req, res, 'error', 'User not found.', '/dashboard?open=userModal');
     }
 
     if (rows[0].role === 'admin') {
-      return redirectWithMessage(req, res, 'error', 'You cannot delete an admin account.', fallback);
+      return redirectWithMessage(req, res, 'error', 'You cannot delete an admin account.', '/dashboard?open=userModal');
     }
 
     db.query('DELETE FROM user_folder_access WHERE user_id = ?', [userId], (err2) => {
       if (err2) {
         console.error('Delete access rows error:', err2);
-        return redirectWithMessage(req, res, 'error', 'Could not delete user (access cleanup failed).', fallback);
+        return redirectWithMessage(req, res, 'error', 'Could not delete user (access cleanup failed).', '/dashboard?open=userModal');
       }
 
       db.query('DELETE FROM users WHERE id = ?', [userId], (err3) => {
         if (err3) {
           console.error('Delete user error:', err3);
-          return redirectWithMessage(req, res, 'error', 'Could not delete user.', fallback);
+          return redirectWithMessage(req, res, 'error', 'Could not delete user.', '/dashboard?open=userModal');
         }
-        return redirectWithMessage(req, res, 'success', 'User deleted successfully.', fallback);
+        return redirectWithMessage(req, res, 'success', 'User deleted successfully.', '/dashboard?open=userModal');
       });
     });
   });
@@ -285,14 +286,12 @@ router.post('/admin/users/:userId/delete', isAuthenticated, isAdmin, (req, res) 
 /* ================= ADMIN: DELETE FILE ================= */
 router.post('/admin/delete-file/:id', isAuthenticated, isAdmin, (req, res) => {
   const fileId = Number(req.params.id);
-  const fallback = '/dashboard?open=fileModal';
-
-  if (!fileId) return redirectWithMessage(req, res, 'error', 'Invalid file.', fallback);
+  if (!fileId) return redirectWithMessage(req, res, 'error', 'Invalid file.', '/dashboard?open=fileModal');
 
   db.query('SELECT filepath FROM files WHERE id = ?', [fileId], (err, rows) => {
     if (err) {
       console.error('Fetch file error:', err);
-      return redirectWithMessage(req, res, 'error', 'Could not delete file.', fallback);
+      return redirectWithMessage(req, res, 'error', 'Could not delete file.', '/dashboard?open=fileModal');
     }
 
     const fp = rows && rows.length ? rows[0].filepath : null;
@@ -300,7 +299,7 @@ router.post('/admin/delete-file/:id', isAuthenticated, isAdmin, (req, res) => {
     db.query('DELETE FROM files WHERE id = ?', [fileId], (err2) => {
       if (err2) {
         console.error('Delete file DB error:', err2);
-        return redirectWithMessage(req, res, 'error', 'Could not delete file.', fallback);
+        return redirectWithMessage(req, res, 'error', 'Could not delete file.', '/dashboard?open=fileModal');
       }
 
       if (fp) {
@@ -323,9 +322,11 @@ router.post('/admin/delete-file/:id', isAuthenticated, isAdmin, (req, res) => {
         }
       }
 
-      return redirectWithMessage(req, res, 'success', 'File deleted successfully.', fallback);
+      return redirectWithMessage(req, res, 'success', 'File deleted successfully.', '/dashboard?open=fileModal');
     });
   });
 });
 
 module.exports = router;
+
+

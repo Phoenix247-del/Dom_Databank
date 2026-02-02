@@ -8,24 +8,100 @@
 </head>
 <body>
 
-<!-- Toast -->
+<!-- ✅ Toast popup container -->
 <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
 <%
-  const safeLogs = logs || [];
-  const safeUsers = users || [];
-  const safeAccessRows = accessRows || [];
-  const safeSelectedFolderName = selectedFolderName || null;
+  const safeLogs = (typeof logs !== 'undefined' && logs) ? logs : [];
+  const safeUsers = (typeof users !== 'undefined' && users) ? users : [];
+  const safeAccessRows = (typeof accessRows !== 'undefined' && accessRows) ? accessRows : [];
+  const safeSelectedFolderName = (typeof selectedFolderName !== 'undefined' && selectedFolderName) ? selectedFolderName : null;
 
   const isAdmin = user.role === 'admin';
+
+  // Privileges: admin bypass
   const canSearch = isAdmin || Number(user.can_search);
   const canPreview = isAdmin || Number(user.can_preview);
   const canPrint = isAdmin || Number(user.can_print);
 
   function toPublicUrl(fp) {
     if (!fp) return '#';
-    const p = String(fp).replace(/\\/g, '/').replace('uploadsdocuments', 'uploads/documents');
+    const p = String(fp)
+      .replace(/\\/g, '/')
+      .replace('uploadsdocuments', 'uploads/documents');
     return p.startsWith('/') ? p : '/' + p;
+  }
+
+  // ===== Folder tree helpers (requires folders.parent_id in DB) =====
+  const allFolders = (folders || []).map(f => ({
+    ...f,
+    parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
+  }));
+
+  const folderById = new Map(allFolders.map(f => [String(f.id), f]));
+  const childrenMap = new Map();
+  allFolders.forEach(f => {
+    const pid = f.parent_id === null ? 'root' : String(f.parent_id);
+    if (!childrenMap.has(pid)) childrenMap.set(pid, []);
+    childrenMap.get(pid).push(f);
+  });
+
+  function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
+  (childrenMap.get('root') || []).sort(sortByName);
+  childrenMap.forEach((arr, key) => { arr.sort(sortByName); });
+
+  function buildFolderLabel(f, depth) {
+    const prefix = depth > 0 ? ('—'.repeat(depth) + ' ') : '';
+    return prefix + f.name;
+  }
+
+  function renderFolderOptions(parentKey, depth) {
+    const kids = childrenMap.get(parentKey) || [];
+    let out = '';
+    kids.forEach(child => {
+      out += `<option value="${child.id}">${buildFolderLabel(child, depth)}</option>`;
+      out += renderFolderOptions(String(child.id), depth + 1);
+    });
+    return out;
+  }
+
+  // ===== Windows-style Folder Tiles (collapsible tree) =====
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function renderFolderTiles(parentKey, depth) {
+    const kids = childrenMap.get(parentKey) || [];
+    let out = '';
+
+    kids.forEach(child => {
+      const childId = String(child.id);
+      const hasChildren = (childrenMap.get(childId) || []).length > 0;
+
+      out += `
+        <div class="fm-node" data-nodeid="${childId}" data-depth="${depth}">
+          <button
+            type="button"
+            class="fm-tile"
+            data-folderid="${childId}"
+            data-foldername="${esc(child.name)}"
+            data-haschildren="${hasChildren ? '1' : '0'}"
+            onclick="onFolderTileClick(event, this)">
+            <div class="fm-icon" aria-hidden="true"></div>
+            <div class="fm-tile-name">${esc(child.name)}</div>
+            ${hasChildren ? `<div class="fm-toggle" title="Expand/Collapse" aria-label="Expand/Collapse"></div>` : ``}
+          </button>
+
+          ${hasChildren ? `
+            <div class="fm-children" data-parent="${childId}" style="display:none;">
+              ${renderFolderTiles(childId, depth + 1)}
+            </div>
+          ` : ``}
+        </div>
+      `;
+    });
+
+    return out;
   }
 %>
 
@@ -39,12 +115,14 @@
 
   <div class="header-right">
     <img src="/images/pdp-logo.png" alt="PDP Logo">
+
     <div class="user-info">
       <strong><%= user.fullname %></strong><br>
       <small><%= user.role.toUpperCase() %></small>
     </div>
+
     <form action="/logout" method="GET">
-      <button class="logout-btn">Logout</button>
+      <button class="logout-btn" type="submit">Logout</button>
     </form>
   </div>
 </header>
@@ -52,25 +130,34 @@
 <div class="container">
   <div class="grid">
 
-    <!-- LEFT -->
+    <!-- LEFT COLUMN -->
     <div class="card">
       <% if (isAdmin) { %>
         <button class="action-btn" onclick="openModal('userModal')">User Management</button>
         <button class="action-btn" onclick="openModal('logsModal')">Activity Logs</button>
       <% } %>
+
       <button class="action-btn" onclick="openModal('folderModal')">Folder Management</button>
       <button class="action-btn red" onclick="openModal('fileModal')">File Management</button>
     </div>
 
-    <!-- RIGHT -->
+    <!-- RIGHT COLUMN -->
     <div class="card">
 
+      <!-- Search only if allowed -->
       <% if (canSearch) { %>
         <form method="GET" action="/files/search" class="search-bar">
           <input class="search-input search-keyword" type="text" name="keyword" placeholder="Search file name">
           <input class="search-input search-date" type="date" name="date">
-          <button class="search-btn">Search</button>
+          <button class="search-btn" type="submit">Search</button>
         </form>
+      <% } %>
+
+      <% if (safeSelectedFolderName) { %>
+        <div class="folder-banner">
+          <strong>Viewing Folder:</strong> <%= safeSelectedFolderName %>
+          <a class="back-link" href="/dashboard">Back to All Files</a>
+        </div>
       <% } %>
 
       <h3 class="recent-title">Recent Files</h3>
@@ -86,6 +173,7 @@
 
           <% (files || []).forEach(f => { 
             const d = new Date(f.uploaded_at);
+            const fileUrl = toPublicUrl(f.filepath);
           %>
           <tr>
             <td><%= f.filename %></td>
@@ -93,52 +181,302 @@
             <td><%= d.toLocaleTimeString() %></td>
             <td>
               <% if (canPreview) { %>
-                <a href="<%= toPublicUrl(f.filepath) %>" target="_blank">Preview</a>
+                <a href="<%= fileUrl %>" target="_blank" rel="noopener">Preview</a>
               <% } else { %>
                 <span class="disabled-action">Preview</span>
+              <% } %>
+
+              &nbsp;|&nbsp;
+
+              <% if (canPrint) { %>
+                <a href="#" onclick="printFile('<%= fileUrl %>'); return false;">Print</a>
+              <% } else { %>
+                <span class="disabled-action">Print</span>
+              <% } %>
+
+              <% if (isAdmin) { %>
+                &nbsp;|&nbsp;
+                <form action="/admin/delete-file/<%= f.id %>" method="POST" style="display:inline;">
+                  <button class="link-danger" type="submit">Delete</button>
+                </form>
               <% } %>
             </td>
           </tr>
           <% }) %>
         </table>
+
+        <% if (!isAdmin) { %>
+          <p class="hint small" style="margin-top:10px;">
+            Note: Preview/Print actions are controlled by Admin privileges. Screenshot blocking is best-effort on web.
+          </p>
+        <% } %>
       </div>
 
     </div>
   </div>
 </div>
 
-<!-- USER MANAGEMENT MODAL -->
+<!-- ================= USER MANAGEMENT MODAL (ADMIN ONLY) ================= -->
 <div id="userModal" class="modal">
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('userModal')">&times;</span>
     <h3>User Management</h3>
-    <!-- (UNCHANGED: your full user management layout stays here) -->
+
+    <div class="um-layout">
+      <div class="um-list">
+        <div class="um-toolbar">
+          <input id="userSearch" type="text" placeholder="Search users..." onkeyup="filterUsers()">
+        </div>
+
+        <div class="um-users" id="usersContainer">
+          <% (safeUsers || []).forEach(u => { %>
+            <button
+              type="button"
+              class="um-user"
+              data-userid="<%= u.id %>"
+              data-fullname="<%= u.fullname %>"
+              data-email="<%= u.email %>"
+              data-role="<%= u.role %>"
+              data-cansearch="<%= Number(u.can_search) %>"
+              data-canpreview="<%= Number(u.can_preview) %>"
+              data-canprint="<%= Number(u.can_print) %>"
+              onclick="selectUser(this)">
+              <div class="um-user-name"><%= u.fullname %></div>
+              <div class="um-user-meta"><%= u.email %> • <%= u.role.toUpperCase() %></div>
+            </button>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="um-panel">
+        <div class="um-panel-grid">
+
+          <div class="sub-card um-create">
+            <h4>Create User</h4>
+            <form method="POST" action="/admin/create-user">
+              <input name="fullname" placeholder="Full Name" required>
+              <input type="email" name="email" placeholder="Email" required>
+              <input type="password" name="password" placeholder="Password" required>
+              <select name="role">
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button class="action-btn" type="submit">Add User</button>
+            </form>
+          </div>
+
+          <div class="sub-card um-modify">
+            <h4>Modify User</h4>
+            <p class="hint small" id="umHint">
+              Select a user from the list to edit roles, privileges, folders, or delete account.
+            </p>
+
+            <form id="updateUserForm" method="POST" action="" class="um-form">
+              <div class="um-row">
+                <div>
+                  <label class="label">Full Name</label>
+                  <input id="umFullname" type="text" disabled>
+                </div>
+                <div>
+                  <label class="label">Email</label>
+                  <input id="umEmail" type="text" disabled>
+                </div>
+              </div>
+
+              <div class="um-row">
+                <div>
+                  <label class="label">Role</label>
+                  <select id="umRole" name="role">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="label">Privileges</label>
+                  <div class="um-checks">
+                    <label><input id="umCanSearch" type="checkbox" name="can_search"> Search</label>
+                    <label><input id="umCanPreview" type="checkbox" name="can_preview"> Preview</label>
+                    <label><input id="umCanPrint" type="checkbox" name="can_print"> Print</label>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="label">Folder Assignment (multi-select)</label>
+                <select id="umFolders" name="folder_ids" multiple size="8" class="folder-multiselect">
+                  <% (folders || []).forEach(f => { %>
+                    <option value="<%= f.id %>"><%= f.name %></option>
+                  <% }) %>
+                </select>
+                <div class="hint small">
+                  Hold Ctrl (Windows) / Cmd (Mac) to select multiple folders.
+                </div>
+              </div>
+
+              <div class="um-actions">
+                <button id="umSaveBtn" class="action-btn small" type="submit" disabled>Save Changes</button>
+                <button id="umDeleteBtn" class="link-danger" type="button" disabled onclick="deleteSelectedUser()">
+                  Delete User
+                </button>
+              </div>
+
+              <input type="hidden" id="umUserId" value="">
+            </form>
+
+            <script>
+              window.__ACCESS_ROWS__ = <%- JSON.stringify(safeAccessRows || []) %>;
+              window.__SELF_USER_ID__ = "<%= user.id %>";
+            </script>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
-<!-- FILE MODAL -->
+<!-- FILE MANAGEMENT -->
 <div id="fileModal" class="modal">
   <div class="modal-content">
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
-    <!-- unchanged -->
+
+    <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
+      <label class="label">Select Folder</label>
+      <select name="folder_id" required>
+        <%- renderFolderOptions('root', 0) %>
+      </select>
+
+      <input type="file" name="document" required>
+      <button class="action-btn red" type="submit">Upload File</button>
+    </form>
   </div>
 </div>
 
-<!-- FOLDER MODAL -->
+<!-- ================= FOLDER MANAGEMENT (FULL SCREEN, 3 COLUMNS) ================= -->
 <div id="folderModal" class="modal">
   <div class="modal-content modal-wide modal-full">
     <span class="close" onclick="closeModal('folderModal')">&times;</span>
     <h3>Folder Management</h3>
-    <!-- unchanged -->
+
+    <div class="fm-layout">
+
+      <!-- Column 1: Search + ICON GRID (only main folders shown initially) -->
+      <div class="fm-list">
+        <div class="fm-toolbar">
+          <input id="folderSearch" type="text" placeholder="Search folders..." onkeyup="filterFolders()">
+          <div class="hint small" style="margin:8px 0 0;">
+            Main folders are shown first. Click the small arrow on a folder to expand/collapse its subfolders.
+          </div>
+        </div>
+
+        <div class="fm-folders fm-grid" id="foldersContainer">
+          <%- renderFolderTiles('root', 0) %>
+        </div>
+      </div>
+
+      <!-- Column 2: Create folder -->
+      <div class="fm-create">
+        <div class="sub-card">
+          <h4>Create Folder</h4>
+
+          <% if (isAdmin) { %>
+            <form method="POST" action="/folder">
+              <label class="label">Folder Name</label>
+              <input name="name" placeholder="Folder Name" required>
+
+              <label class="label">Create Inside (Parent Folder)</label>
+              <select name="parent_id">
+                <option value="">-- None (Top Level) --</option>
+                <%- renderFolderOptions('root', 0) %>
+              </select>
+
+              <button class="action-btn" type="submit">Create Folder</button>
+            </form>
+            <p class="hint small">Choose a parent folder to create a subfolder.</p>
+          <% } else { %>
+            <p class="hint">Only Admin can create folders.</p>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Column 3: Modify folder -->
+      <div class="fm-modify">
+        <div class="sub-card">
+          <h4>Modify Folder</h4>
+          <p class="hint small" id="fmHint">Select a folder from the grid to rename, delete, or open.</p>
+
+          <% if (isAdmin) { %>
+
+            <div class="fm-selected">
+              <label class="label">Selected Folder</label>
+              <input id="fmFolderName" type="text" disabled placeholder="No folder selected">
+              <input id="fmFolderId" type="hidden" value="">
+            </div>
+
+            <form id="renameFolderForm" method="POST" action="">
+              <label class="label">Rename To</label>
+              <input id="fmNewName" name="new_name" placeholder="Enter new folder name" required disabled>
+              <button id="fmRenameBtn" class="action-btn" type="submit" disabled>Rename Folder</button>
+            </form>
+
+            <div style="margin-top:10px;">
+              <button id="fmDeleteBtn" class="action-btn red" type="button" disabled onclick="deleteSelectedFolder()">
+                Delete Folder
+              </button>
+              <p class="hint small" style="margin-top:8px;">
+                Folder deletion is blocked if it has files or subfolders.
+              </p>
+            </div>
+
+            <div style="margin-top:10px;">
+              <a id="fmOpenLink" class="back-link" href="#" style="display:none;">Open Folder</a>
+            </div>
+
+          <% } else { %>
+            <p class="hint">Only Admin can rename or delete folders.</p>
+          <% } %>
+        </div>
+      </div>
+
+    </div>
   </div>
 </div>
 
-<!-- LOGS MODAL -->
+<!-- LOGS (ADMIN ONLY) -->
 <div id="logsModal" class="modal">
   <div class="modal-content modal-wide">
     <span class="close" onclick="closeModal('logsModal')">&times;</span>
     <h3>Activity Logs</h3>
+
+    <input id="logFilter" type="text" placeholder="Filter logs by user/action..." onkeyup="filterLogs()" />
+
+    <div style="max-height: 420px; overflow:auto; margin-top:10px;">
+      <table id="logsTable">
+        <tr>
+          <th>User</th>
+          <th>Action</th>
+          <th>Date</th>
+          <th>Time</th>
+        </tr>
+
+        <% (safeLogs || []).forEach(l => { 
+          const dt = new Date(l.created_at);
+        %>
+        <tr>
+          <td>
+            <%= l.fullname ? l.fullname : 'Unknown' %>
+            <% if (l.email) { %><br><small><%= l.email %></small><% } %>
+          </td>
+          <td><%= l.action %></td>
+          <td><%= dt.toLocaleDateString() %></td>
+          <td><%= dt.toLocaleTimeString() %></td>
+        </tr>
+        <% }) %>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -147,38 +485,279 @@
 </footer>
 
 <script>
-function openModal(id) {
-  const el = document.getElementById(id);
-  if (el) el.style.display = 'block';
+function openModal(id) { document.getElementById(id).style.display = 'block'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+/* ================= Toast Popups ================= */
+function showToast(message, type = "success") {
+  const el = document.getElementById("toast");
+  if (!el) return;
+
+  el.className = `toast toast-${type} show`;
+  el.innerText = message;
+
+  clearTimeout(window.__toastTimer__);
+  window.__toastTimer__ = setTimeout(() => el.classList.remove("show"), 3500);
 }
 
-function closeModal(id) {
-  const el = document.getElementById(id);
-  if (el) el.style.display = 'none';
-}
-
-/* Toasts */
-function showToast(msg, type="success") {
-  const t = document.getElementById("toast");
-  t.className = `toast toast-${type} show`;
-  t.innerText = msg;
-  setTimeout(() => t.classList.remove("show"), 3500);
-}
-
-/* ✅ AUTO-OPEN MODAL AFTER REDIRECT */
 (function () {
   const params = new URLSearchParams(window.location.search);
-  const open = params.get("open");
   const success = params.get("success");
   const error = params.get("error");
+  const info = params.get("info");
 
-  if (open) openModal(open);
   if (success) showToast(success, "success");
   if (error) showToast(error, "error");
+  if (info) showToast(info, "info");
 
-  if (open || success || error) {
+  if (success || error || info) {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
+})();
+
+/* ================= Print helper ================= */
+function printFile(url) {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.src = url;
+  document.body.appendChild(iframe);
+
+  iframe.onload = function() {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      window.open(url, '_blank', 'noopener');
+    }
+  };
+}
+
+/* ================= Logs filter ================= */
+function filterLogs() {
+  const input = document.getElementById('logFilter');
+  const filter = (input.value || '').toLowerCase();
+  const table = document.getElementById('logsTable');
+  if (!table) return;
+
+  const rows = table.getElementsByTagName('tr');
+  for (let i = 1; i < rows.length; i++) {
+    const rowText = rows[i].innerText.toLowerCase();
+    rows[i].style.display = rowText.includes(filter) ? '' : 'none';
+  }
+}
+
+/* ================= User Management ================= */
+let selectedUserId = null;
+
+function filterUsers() {
+  const q = (document.getElementById('userSearch').value || '').toLowerCase();
+  document.querySelectorAll('.um-user').forEach(btn => {
+    btn.style.display = (btn.innerText || '').toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function selectUser(btn) {
+  document.querySelectorAll('.um-user').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  selectedUserId = btn.dataset.userid;
+  document.getElementById('umUserId').value = selectedUserId;
+
+  document.getElementById('umFullname').value = btn.dataset.fullname || '';
+  document.getElementById('umEmail').value = btn.dataset.email || '';
+
+  const role = btn.dataset.role || 'user';
+  document.getElementById('umRole').value = role;
+
+  document.getElementById('umCanSearch').checked = Number(btn.dataset.cansearch) === 1;
+  document.getElementById('umCanPreview').checked = Number(btn.dataset.canpreview) === 1;
+  document.getElementById('umCanPrint').checked = Number(btn.dataset.canprint) === 1;
+
+  const form = document.getElementById('updateUserForm');
+  form.action = `/admin/users/${selectedUserId}/update`;
+
+  const access = window.__ACCESS_ROWS__ || [];
+  const folderSet = new Set(access.filter(r => String(r.user_id) === String(selectedUserId)).map(r => String(r.folder_id)));
+
+  const sel = document.getElementById('umFolders');
+  Array.from(sel.options).forEach(opt => opt.selected = folderSet.has(String(opt.value)));
+
+  const selfId = String(window.__SELF_USER_ID__ || '');
+  const isSelf = String(selectedUserId) === selfId;
+  const isTargetAdmin = role === 'admin';
+
+  document.getElementById('umSaveBtn').disabled = isSelf;
+  document.getElementById('umDeleteBtn').disabled = (isSelf || isTargetAdmin);
+  document.getElementById('umFolders').disabled = isTargetAdmin;
+
+  document.getElementById('umHint').innerText =
+    isSelf ? 'You cannot modify your own admin privileges here.' :
+    isTargetAdmin ? 'Admin accounts bypass restrictions (folders not required).' :
+    'Modify role/privileges and assign folders, then Save.';
+}
+
+function deleteSelectedUser() {
+  if (!selectedUserId) return;
+  const btn = document.querySelector(`.um-user[data-userid="${selectedUserId}"]`);
+  const role = btn ? (btn.dataset.role || '') : '';
+  if (role === 'admin') return alert('You cannot delete an admin account.');
+  if (!confirm('Delete this user account?')) return;
+
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = `/admin/users/${selectedUserId}/delete`;
+  document.body.appendChild(f);
+  f.submit();
+}
+
+/* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
+let selectedFolderId = null;
+
+function onFolderTileClick(e, tile) {
+  // If user clicked the toggle arrow, expand/collapse ONLY
+  const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
+  const folderId = tile.dataset.folderid;
+
+  if (toggleClicked) {
+    toggleFolderChildren(folderId);
+    return;
+  }
+
+  // Otherwise select folder
+  selectFolderTile(tile);
+}
+
+function selectFolderTile(tile) {
+  document.querySelectorAll('.fm-tile').forEach(b => b.classList.remove('active'));
+  tile.classList.add('active');
+
+  selectedFolderId = tile.dataset.folderid;
+  const folderName = tile.dataset.foldername || '';
+
+  const nameEl = document.getElementById('fmFolderName');
+  const idEl = document.getElementById('fmFolderId');
+  const newNameEl = document.getElementById('fmNewName');
+  const renameBtn = document.getElementById('fmRenameBtn');
+  const deleteBtn = document.getElementById('fmDeleteBtn');
+  const hint = document.getElementById('fmHint');
+  const openLink = document.getElementById('fmOpenLink');
+
+  if (idEl) idEl.value = selectedFolderId;
+  if (nameEl) nameEl.value = folderName;
+
+  if (newNameEl) { newNameEl.disabled = false; newNameEl.value = folderName; }
+  if (renameBtn) renameBtn.disabled = false;
+  if (deleteBtn) deleteBtn.disabled = false;
+
+  const renameForm = document.getElementById('renameFolderForm');
+  if (renameForm) renameForm.action = `/folder/${selectedFolderId}/rename`;
+
+  if (openLink) {
+    openLink.style.display = 'inline-block';
+    openLink.href = `/files/folder/${selectedFolderId}`;
+  }
+
+  if (hint) hint.innerText = `Selected: ${folderName} (ID: ${selectedFolderId})`;
+}
+
+function toggleFolderChildren(folderId) {
+  const box = document.querySelector(`.fm-children[data-parent="${folderId}"]`);
+  if (!box) return;
+
+  const isOpen = box.style.display !== 'none';
+  box.style.display = isOpen ? 'none' : 'grid';
+
+  // Toggle arrow state
+  const node = document.querySelector(`.fm-node[data-nodeid="${folderId}"]`);
+  if (node) node.classList.toggle('open', !isOpen);
+}
+
+function filterFolders() {
+  const q = (document.getElementById('folderSearch').value || '').toLowerCase().trim();
+  const nodes = Array.from(document.querySelectorAll('.fm-node'));
+
+  if (!q) {
+    // reset: show roots, hide all children containers
+    nodes.forEach(n => n.style.display = '');
+    document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
+    document.querySelectorAll('.fm-node').forEach(n => n.classList.remove('open'));
+    return;
+  }
+
+  // basic filter: show nodes whose name matches; also show their ancestors
+  const tiles = Array.from(document.querySelectorAll('.fm-tile'));
+  const matchedIds = new Set();
+
+  tiles.forEach(t => {
+    const name = (t.dataset.foldername || '').toLowerCase();
+    if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
+  });
+
+  // helper: walk up by DOM parents
+  function showAncestors(nodeEl) {
+    let p = nodeEl.parentElement;
+    while (p) {
+      if (p.classList && p.classList.contains('fm-children')) {
+        p.style.display = 'grid';
+        const pid = p.getAttribute('data-parent');
+        const parentNode = document.querySelector(`.fm-node[data-nodeid="${pid}"]`);
+        if (parentNode) parentNode.classList.add('open');
+      }
+      p = p.parentElement;
+    }
+  }
+
+  nodes.forEach(n => {
+    const tile = n.querySelector('.fm-tile');
+    const id = tile ? String(tile.dataset.folderid) : '';
+    const show = matchedIds.has(id);
+    n.style.display = show ? '' : 'none';
+    if (show) showAncestors(n);
+  });
+}
+
+function deleteSelectedFolder() {
+  if (!selectedFolderId) return;
+  if (!confirm('Delete this folder? (Blocked if it has files or subfolders)')) return;
+
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = `/folder/${selectedFolderId}/delete`;
+  document.body.appendChild(f);
+  f.submit();
+}
+
+/* ================= Best-effort anti-screenshot (non-admin) ================= */
+(function () {
+  const isAdmin = "<%= user.role %>" === "admin";
+  if (isAdmin) return;
+
+  const area = document.getElementById('protectedArea');
+  if (!area) return;
+
+  area.addEventListener('contextmenu', (e) => e.preventDefault());
+  area.style.userSelect = 'none';
+  area.style.webkitUserSelect = 'none';
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'PrintScreen') {
+      area.classList.add('blurred');
+      setTimeout(() => area.classList.remove('blurred'), 2000);
+    }
+    if ((e.ctrlKey || e.metaKey) && ['c', 'x', 's'].includes((e.key || '').toLowerCase())) {
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) area.classList.add('blurred');
+    else area.classList.remove('blurred');
+  });
 })();
 </script>
 
