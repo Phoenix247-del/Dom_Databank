@@ -48,6 +48,7 @@ header {
   text-align: right;
   font-size: 13px;
   color: #006400;
+  line-height: 1.25;
 }
 
 .logout-btn {
@@ -463,7 +464,7 @@ th {
   transform: rotate(90deg);
 }
 
-/* ✅ Children container (hidden by default in your HTML, shown as grid when expanded) */
+/* ✅ Children container */
 .fm-children {
   margin-top: 10px;
   padding: 10px;
@@ -475,7 +476,7 @@ th {
   gap: 14px;
 }
 
-/* Slight indent per depth (works visually even when nested) */
+/* Slight indent per depth */
 .fm-node[data-depth="1"] { margin-left: 10px; }
 .fm-node[data-depth="2"] { margin-left: 16px; }
 .fm-node[data-depth="3"] { margin-left: 22px; }
@@ -574,5 +575,55 @@ footer {
   .fm-grid,
   .fm-children {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+}
+
+/* ✅ EXTRA MOBILE HEADER FIX (this is what solves your screenshot issue) */
+@media (max-width: 600px) {
+  header {
+    padding: 10px 12px;
+    flex-direction: column;          /* stack title above right-controls */
+    align-items: stretch;
+    gap: 8px;
+    flex-wrap: nowrap;               /* stop weird wrapping patterns */
+  }
+
+  .header-title {
+    order: 1;
+    width: 100%;
+  }
+
+  /* Make the long title readable without splitting into letters */
+  .title-line1,
+  .title-line2 {
+    letter-spacing: 0.5px;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.15;
+  }
+
+  .title-line1 { font-size: 16px; }
+  .title-line2 { font-size: 12px; letter-spacing: 1px; }
+
+  .header-right {
+    order: 2;
+    width: 100%;
+    justify-content: space-between;  /* logo left, user+logout right */
+    gap: 8px;
+  }
+
+  .header-right img { height: 32px; }
+
+  .user-info {
+    text-align: left;                /* looks cleaner on mobile */
+    font-size: 12px;
+    line-height: 1.15;
+  }
+
+  .logout-btn {
+    padding: 7px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    white-space: nowrap;
   }
 }
