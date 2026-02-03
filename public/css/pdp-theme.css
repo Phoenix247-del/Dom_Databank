@@ -248,6 +248,49 @@ th {
   font-size: 24px;
 }
 
+/* ================= FILE MANAGEMENT (FULL SCREEN, 2 COLUMNS) ================= */
+.file-modal h3 { margin-top: 0; }
+
+.file-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 12px;
+  margin-top: 10px;
+  min-height: 70vh;
+}
+
+.file-folders,
+.file-upload {
+  min-height: 70vh;
+  overflow: auto;
+}
+
+.file-folders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.file-folder-btn {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e6e6e6;
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  color: #006400;
+}
+
+.file-folder-btn:hover { background: #f7fbf7; }
+
+.file-folder-btn.active {
+  border-color: #006400;
+  background: #e9f7ea;
+}
+
 /* USER MANAGEMENT interactive layout */
 .um-layout {
   display: grid;
@@ -626,4 +669,7 @@ footer {
     border-radius: 4px;
     white-space: nowrap;
   }
+  .file-layout { grid-template-columns: 1fr; }
+  .file-folders, .file-upload { min-height: auto; }
+
 }

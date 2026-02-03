@@ -41,12 +41,18 @@
   const folderById = new Map(allFolders.map(f => [String(f.id), f]));
   const childrenMap = new Map();
   allFolders.forEach(f => {
-    const pid = f.parent_id === null ? 'root' : String(f.parent_id);
+    // If a subfolder's parent isn't in the current folder list (common for limited user access),
+    // treat it as a root-level folder so it still shows up.
+    let pid = 'root';
+    if (f.parent_id !== null) {
+      const parentKey = String(f.parent_id);
+      pid = folderById.has(parentKey) ? parentKey : 'root';
+    }
     if (!childrenMap.has(pid)) childrenMap.set(pid, []);
     childrenMap.get(pid).push(f);
   });
 
-  function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
+function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
   (childrenMap.get('root') || []).sort(sortByName);
   childrenMap.forEach((arr, key) => { arr.sort(sortByName); });
 
@@ -254,6 +260,7 @@
           <div class="sub-card um-create">
             <h4>Create User</h4>
             <form method="POST" action="/admin/create-user">
+              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
               <input name="fullname" placeholder="Full Name" required>
               <input type="email" name="email" placeholder="Email" required>
               <input type="password" name="password" placeholder="Password" required>
@@ -272,6 +279,7 @@
             </p>
 
             <form id="updateUserForm" method="POST" action="" class="um-form">
+              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
               <div class="um-row">
                 <div>
                   <label class="label">Full Name</label>
@@ -337,21 +345,63 @@
   </div>
 </div>
 
-<!-- FILE MANAGEMENT -->
+<!-- FILE MANAGEMENT (FULL SCREEN, 2 COLUMNS) -->
 <div id="fileModal" class="modal">
-  <div class="modal-content">
+  <div class="modal-content modal-wide modal-full file-modal">
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
-    <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
-      <label class="label">Select Folder</label>
-      <select name="folder_id" required>
-        <%- renderFolderOptions('root', 0) %>
-      </select>
+    <div class="file-layout">
+      <!-- Left: Assigned folders -->
+      <div class="sub-card file-folders">
+        <h4 style="margin-top:0;">Assigned Folders</h4>
+        <p class="hint small" style="margin-top:6px;">
+          Click a folder to select it for upload.
+        </p>
 
-      <input type="file" name="document" required>
-      <button class="action-btn red" type="submit">Upload File</button>
-    </form>
+        <div class="file-folders-list" id="fileFoldersList">
+          <% 
+            function renderFolderSidebar(parentKey, depth) {
+              const kids = childrenMap.get(parentKey) || [];
+              let out = '';
+              kids.forEach(child => {
+                const label = buildFolderLabel(child, depth);
+                out += `
+                  <button type="button" class="file-folder-btn" data-folderid="${child.id}" onclick="selectUploadFolder(this)">
+                    ${esc(label)}
+                  </button>
+                `;
+                out += renderFolderSidebar(String(child.id), depth + 1);
+              });
+              return out;
+            }
+          %>
+          <%- renderFolderSidebar('root', 0) %>
+        </div>
+      </div>
+
+      <!-- Right: Upload -->
+      <div class="sub-card file-upload">
+        <h4 style="margin-top:0;">Upload File</h4>
+
+        <form id="uploadForm" method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
+          <input type="hidden" name="return_to" value="/dashboard?open=fileModal">
+
+          <label class="label">Selected Folder</label>
+          <select id="uploadFolderSelect" name="folder_id" required>
+            <%- renderFolderOptions('root', 0) %>
+          </select>
+
+          <input type="file" name="document" required>
+          <button class="action-btn red" type="submit">Upload File</button>
+
+          <p class="hint small" style="margin-top:10px;">
+            Tip: If you can't see a folder here, it means it wasn't assigned to your account.
+          </p>
+        </form>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -505,13 +555,26 @@ function showToast(message, type = "success") {
   const success = params.get("success");
   const error = params.get("error");
   const info = params.get("info");
+  const open = params.get("open");
 
   if (success) showToast(success, "success");
   if (error) showToast(error, "error");
   if (info) showToast(info, "info");
 
+  // Keep `open=` (so a modal can stay open after redirects), but remove toast params.
   if (success || error || info) {
-    window.history.replaceState({}, document.title, window.location.pathname);
+    params.delete("success");
+    params.delete("error");
+    params.delete("info");
+    const qs = params.toString();
+    const nextUrl = window.location.pathname + (qs ? ("?" + qs) : "");
+    window.history.replaceState({}, document.title, nextUrl);
+  }
+
+  // Auto-open a modal if requested (e.g. /dashboard?open=userModal)
+  if (open) {
+    const el = document.getElementById(open);
+    if (el) openModal(open);
   }
 })();
 
@@ -611,8 +674,35 @@ function deleteSelectedUser() {
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = `/admin/users/${selectedUserId}/delete`;
+
+  const rt = document.createElement('input');
+  rt.type = 'hidden';
+  rt.name = 'return_to';
+  rt.value = '/dashboard?open=userModal';
+  f.appendChild(rt);
+
   document.body.appendChild(f);
   f.submit();
+}
+
+
+/* ================= File Management (2-column) ================= */
+function selectUploadFolder(btn) {
+  const folderId = String(btn.getAttribute('data-folderid') || '');
+  if (!folderId) return;
+
+  // highlight
+  document.querySelectorAll('.file-folder-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  // set select
+  const sel = document.getElementById('uploadFolderSelect');
+  if (!sel) return;
+
+  const opt = Array.from(sel.options).find(o => String(o.value) === folderId);
+  if (opt) {
+    sel.value = folderId;
+  }
 }
 
 /* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
