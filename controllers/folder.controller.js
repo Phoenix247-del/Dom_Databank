@@ -236,3 +236,4 @@ exports.deleteFolder = (req, res) => {
     return redirectWithMessage(req, res, 'error', 'Unexpected error deleting folder.', '/dashboard?open=folderModal');
   }
 };
+1

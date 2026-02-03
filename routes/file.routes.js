@@ -63,3 +63,4 @@ router.get('/search', isAuthenticated, controller.searchFiles);
 router.get('/folder/:folderId', isAuthenticated, controller.listFilesByFolder);
 
 module.exports = router;
+1
