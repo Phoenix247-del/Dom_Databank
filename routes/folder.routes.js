@@ -42,5 +42,5 @@ router.post(
   logger('Deleted a folder'),
   controller.deleteFolder
 );
-1
+
 module.exports = router;

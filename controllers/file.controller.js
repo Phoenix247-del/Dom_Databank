@@ -262,4 +262,3 @@ exports.listFilesByFolder = async (req, res) => {
     });
   });
 };
-1
