@@ -41,18 +41,12 @@
   const folderById = new Map(allFolders.map(f => [String(f.id), f]));
   const childrenMap = new Map();
   allFolders.forEach(f => {
-    // If a subfolder's parent isn't in the current folder list (common for limited user access),
-    // treat it as a root-level folder so it still shows up.
-    let pid = 'root';
-    if (f.parent_id !== null) {
-      const parentKey = String(f.parent_id);
-      pid = folderById.has(parentKey) ? parentKey : 'root';
-    }
+    const pid = f.parent_id === null ? 'root' : String(f.parent_id);
     if (!childrenMap.has(pid)) childrenMap.set(pid, []);
     childrenMap.get(pid).push(f);
   });
 
-function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
+  function sortByName(a, b) { return String(a.name).localeCompare(String(b.name)); }
   (childrenMap.get('root') || []).sort(sortByName);
   childrenMap.forEach((arr, key) => { arr.sort(sortByName); });
 
@@ -260,7 +254,6 @@ function sortByName(a, b) { return String(a.name).localeCompare(String(b.name));
           <div class="sub-card um-create">
             <h4>Create User</h4>
             <form method="POST" action="/admin/create-user">
-              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
               <input name="fullname" placeholder="Full Name" required>
               <input type="email" name="email" placeholder="Email" required>
               <input type="password" name="password" placeholder="Password" required>
@@ -279,7 +272,6 @@ function sortByName(a, b) { return String(a.name).localeCompare(String(b.name));
             </p>
 
             <form id="updateUserForm" method="POST" action="" class="um-form">
-              <input type="hidden" name="return_to" value="/dashboard?open=userModal">
               <div class="um-row">
                 <div>
                   <label class="label">Full Name</label>
@@ -345,60 +337,101 @@ function sortByName(a, b) { return String(a.name).localeCompare(String(b.name));
   </div>
 </div>
 
-<!-- FILE MANAGEMENT (FULL SCREEN, 2 COLUMNS) -->
+<!-- FILE MANAGEMENT -->
 <div id="fileModal" class="modal">
-  <div class="modal-content modal-wide modal-full file-modal">
+  <div class="modal-content modal-wide modal-full">
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
-    <div class="file-layout">
-      <!-- Left: Assigned folders -->
-      <div class="sub-card file-folders">
-        <h4 style="margin-top:0;">Assigned Folders</h4>
-        <p class="hint small" style="margin-top:6px;">
-          Click a folder to select it for upload.
-        </p>
+    <div class="filem-layout">
+      <!-- Left: folders (icons) -->
+      <div class="filem-list">
+        <div class="filem-toolbar">
+          <input id="fileFolderSearch" type="text" placeholder="Search folders..." onkeyup="filterFileFolders()">
+          <div class="hint small" style="margin:8px 0 0;">
+            Select a folder on the left, then upload a file on the right.
+          </div>
+        </div>
 
-        <div class="file-folders-list" id="fileFoldersList">
+        <div class="filem-folders filem-grid" id="fileFoldersContainer">
           <% 
-            function renderFolderSidebar(parentKey, depth) {
-              const kids = childrenMap.get(parentKey) || [];
+            // Reuse the same tiles renderer; for file upload we show ALL folders available to this user.
+            // NOTE: "folders" is already filtered by backend for non-admin users.
+            const fileFolders = (folders || []).map(f => ({
+              ...f,
+              parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
+            }));
+
+            const fileChildren = new Map();
+            fileFolders.forEach(f => {
+              const pid = f.parent_id === null ? 'root' : String(f.parent_id);
+              if (!fileChildren.has(pid)) fileChildren.set(pid, []);
+              fileChildren.get(pid).push(f);
+            });
+            (fileChildren.get('root') || []).sort(sortByName);
+            fileChildren.forEach(arr => arr.sort(sortByName));
+
+            function renderFileFolderTiles(parentKey, depth) {
+              const kids = fileChildren.get(parentKey) || [];
               let out = '';
               kids.forEach(child => {
-                const label = buildFolderLabel(child, depth);
+                const childId = String(child.id);
+                const hasChildren = (fileChildren.get(childId) || []).length > 0;
                 out += `
-                  <button type="button" class="file-folder-btn" data-folderid="${child.id}" onclick="selectUploadFolder(this)">
-                    ${esc(label)}
-                  </button>
+                  <div class="fm-node" data-nodeid="${childId}" data-depth="${depth}">
+                    <button
+                      type="button"
+                      class="fm-tile filem-tile"
+                      data-folderid="${childId}"
+                      data-foldername="${esc(child.name)}"
+                      data-haschildren="${hasChildren ? '1' : '0'}"
+                      onclick="onFileFolderTileClick(event, this)">
+                      <div class="fm-icon" aria-hidden="true"></div>
+                      <div class="fm-tile-name">${esc(child.name)}</div>
+                      ${hasChildren ? `<div class="fm-toggle" title="Expand/Collapse" aria-label="Expand/Collapse"></div>` : ``}
+                    </button>
+
+                    ${hasChildren ? `
+                      <div class="fm-children" data-parent="${childId}" style="display:none;">
+                        ${renderFileFolderTiles(childId, depth + 1)}
+                      </div>
+                    ` : ``}
+                  </div>
                 `;
-                out += renderFolderSidebar(String(child.id), depth + 1);
               });
               return out;
             }
           %>
-          <%- renderFolderSidebar('root', 0) %>
+
+          <%- renderFileFolderTiles('root', 0) %>
         </div>
       </div>
 
-      <!-- Right: Upload -->
-      <div class="sub-card file-upload">
-        <h4 style="margin-top:0;">Upload File</h4>
+      <!-- Right: upload -->
+      <div class="filem-upload">
+        <div class="sub-card">
+          <h4>Upload File</h4>
 
-        <form id="uploadForm" method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
-          <input type="hidden" name="return_to" value="/dashboard?open=fileModal">
+          <div class="filem-selected">
+            <label class="label">Selected Folder</label>
+            <input id="filemFolderName" type="text" disabled placeholder="No folder selected">
+            <input id="filemFolderId" type="hidden" name="folder_id" form="fileUploadForm" value="">
+          </div>
 
-          <label class="label">Selected Folder</label>
-          <select id="uploadFolderSelect" name="folder_id" required>
-            <%- renderFolderOptions('root', 0) %>
-          </select>
+          <form id="fileUploadForm" method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
+            <!-- Fallback select (hidden) -->
+            <select id="filemFolderSelect" name="folder_id" required style="display:none;">
+              <%- renderFolderOptions('root', 0) %>
+            </select>
 
-          <input type="file" name="document" required>
-          <button class="action-btn red" type="submit">Upload File</button>
+            <input type="file" name="document" required>
+            <button id="filemUploadBtn" class="action-btn red" type="submit" disabled>Upload File</button>
 
-          <p class="hint small" style="margin-top:10px;">
-            Tip: If you can't see a folder here, it means it wasn't assigned to your account.
-          </p>
-        </form>
+            <p class="hint small" style="margin-top:10px;">
+              Tip: If you can’t see a folder here, ask Admin to assign it to your account.
+            </p>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -561,23 +594,15 @@ function showToast(message, type = "success") {
   if (error) showToast(error, "error");
   if (info) showToast(info, "info");
 
-  // Keep `open=` (so a modal can stay open after redirects), but remove toast params.
-  if (success || error || info) {
-    params.delete("success");
-    params.delete("error");
-    params.delete("info");
-    const qs = params.toString();
-    const nextUrl = window.location.pathname + (qs ? ("?" + qs) : "");
-    window.history.replaceState({}, document.title, nextUrl);
+  // Keep requested modal open after redirects (e.g. /dashboard?open=userModal)
+  if (open) {
+    try { openModal(open); } catch (e) {}
   }
 
-  // Auto-open a modal if requested (e.g. /dashboard?open=userModal)
-  if (open) {
-    const el = document.getElementById(open);
-    if (el) openModal(open);
+  if (success || error || info || open) {
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 })();
-
 /* ================= Print helper ================= */
 function printFile(url) {
   const iframe = document.createElement('iframe');
@@ -674,36 +699,97 @@ function deleteSelectedUser() {
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = `/admin/users/${selectedUserId}/delete`;
-
-  const rt = document.createElement('input');
-  rt.type = 'hidden';
-  rt.name = 'return_to';
-  rt.value = '/dashboard?open=userModal';
-  f.appendChild(rt);
-
   document.body.appendChild(f);
   f.submit();
 }
 
 
-/* ================= File Management (2-column) ================= */
-function selectUploadFolder(btn) {
-  const folderId = String(btn.getAttribute('data-folderid') || '');
-  if (!folderId) return;
+/* ================= File Management (2 columns + Folder Icons) ================= */
+let selectedUploadFolderId = null;
 
-  // highlight
-  document.querySelectorAll('.file-folder-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+function onFileFolderTileClick(e, tile) {
+  const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
+  const folderId = tile.dataset.folderid;
 
-  // set select
-  const sel = document.getElementById('uploadFolderSelect');
-  if (!sel) return;
-
-  const opt = Array.from(sel.options).find(o => String(o.value) === folderId);
-  if (opt) {
-    sel.value = folderId;
+  if (toggleClicked) {
+    toggleFileFolderChildren(folderId);
+    return;
   }
+
+  selectFileFolderTile(tile);
 }
+
+function selectFileFolderTile(tile) {
+  document.querySelectorAll('#fileFoldersContainer .fm-tile').forEach(b => b.classList.remove('active'));
+  tile.classList.add('active');
+
+  selectedUploadFolderId = tile.dataset.folderid;
+  const folderName = tile.dataset.foldername || '';
+
+  const nameEl = document.getElementById('filemFolderName');
+  const idEl = document.getElementById('filemFolderId');
+  const selEl = document.getElementById('filemFolderSelect');
+  const uploadBtn = document.getElementById('filemUploadBtn');
+
+  if (nameEl) nameEl.value = folderName;
+  if (idEl) idEl.value = selectedUploadFolderId;
+
+  if (selEl) selEl.value = String(selectedUploadFolderId);
+  if (uploadBtn) uploadBtn.disabled = false;
+}
+
+function toggleFileFolderChildren(folderId) {
+  const box = document.querySelector(`#fileFoldersContainer .fm-children[data-parent="${folderId}"]`);
+  if (!box) return;
+
+  const isOpen = box.style.display !== 'none';
+  box.style.display = isOpen ? 'none' : 'grid';
+
+  const node = document.querySelector(`#fileFoldersContainer .fm-node[data-nodeid="${folderId}"]`);
+  if (node) node.classList.toggle('open', !isOpen);
+}
+
+function filterFileFolders() {
+  const q = (document.getElementById('fileFolderSearch').value || '').toLowerCase().trim();
+  const nodes = Array.from(document.querySelectorAll('#fileFoldersContainer .fm-node'));
+
+  if (!q) {
+    nodes.forEach(n => n.style.display = '');
+    document.querySelectorAll('#fileFoldersContainer .fm-children').forEach(c => c.style.display = 'none');
+    document.querySelectorAll('#fileFoldersContainer .fm-node').forEach(n => n.classList.remove('open'));
+    return;
+  }
+
+  const tiles = Array.from(document.querySelectorAll('#fileFoldersContainer .fm-tile'));
+  const matchedIds = new Set();
+
+  tiles.forEach(t => {
+    const name = (t.dataset.foldername || '').toLowerCase();
+    if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
+  });
+
+  function showAncestors(nodeEl) {
+    let p = nodeEl.parentElement;
+    while (p) {
+      if (p.classList && p.classList.contains('fm-children')) {
+        p.style.display = 'grid';
+        const pid = p.getAttribute('data-parent');
+        const parentNode = document.querySelector(`#fileFoldersContainer .fm-node[data-nodeid="${pid}"]`);
+        if (parentNode) parentNode.classList.add('open');
+      }
+      p = p.parentElement;
+    }
+  }
+
+  nodes.forEach(n => {
+    const tile = n.querySelector('.fm-tile');
+    const id = tile ? String(tile.dataset.folderid) : '';
+    const show = matchedIds.has(id);
+    n.style.display = show ? '' : 'none';
+    if (show) showAncestors(n);
+  });
+}
+
 
 /* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
 let selectedFolderId = null;
