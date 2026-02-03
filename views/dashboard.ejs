@@ -355,8 +355,6 @@
 
         <div class="filem-folders filem-grid" id="fileFoldersContainer">
           <% 
-            // Reuse the same tiles renderer; for file upload we show ALL folders available to this user.
-            // NOTE: "folders" is already filtered by backend for non-admin users.
             const fileFolders = (folders || []).map(f => ({
               ...f,
               parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined' || Number(f.parent_id) === 0) ? null : Number(f.parent_id)
@@ -446,12 +444,12 @@
 
     <div class="fm-layout">
 
-      <!-- Column 1: Search + ICON GRID (only main folders shown initially) -->
+      <!-- Column 1: Search + ICON GRID -->
       <div class="fm-list">
         <div class="fm-toolbar">
           <input id="folderSearch" type="text" placeholder="Search folders..." onkeyup="filterFolders()">
           <div class="hint small" style="margin:8px 0 0;">
-            Main folders are shown first. Click the small arrow on a folder to expand/collapse its subfolders.
+            Click a folder tile to expand its subfolders (or use the small arrow).
           </div>
         </div>
 
@@ -603,6 +601,7 @@ function showToast(message, type = "success") {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 })();
+
 /* ================= Print helper ================= */
 function printFile(url) {
   const iframe = document.createElement('iframe');
@@ -703,18 +702,21 @@ function deleteSelectedUser() {
   f.submit();
 }
 
-
 /* ================= File Management (2 columns + Folder Icons) ================= */
 let selectedUploadFolderId = null;
 
 function onFileFolderTileClick(e, tile) {
   const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
   const folderId = tile.dataset.folderid;
+  const hasChildren = tile.dataset.haschildren === '1';
 
   if (toggleClicked) {
     toggleFileFolderChildren(folderId);
     return;
   }
+
+  // ✅ improvement: clicking folder tile also expands if it has children
+  if (hasChildren) toggleFileFolderChildren(folderId);
 
   selectFileFolderTile(tile);
 }
@@ -790,21 +792,22 @@ function filterFileFolders() {
   });
 }
 
-
 /* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
 let selectedFolderId = null;
 
 function onFolderTileClick(e, tile) {
-  // If user clicked the toggle arrow, expand/collapse ONLY
   const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
   const folderId = tile.dataset.folderid;
+  const hasChildren = tile.dataset.haschildren === '1';
 
   if (toggleClicked) {
     toggleFolderChildren(folderId);
     return;
   }
 
-  // Otherwise select folder
+  // ✅ improvement: clicking folder tile also expands if it has children
+  if (hasChildren) toggleFolderChildren(folderId);
+
   selectFolderTile(tile);
 }
 
@@ -848,7 +851,6 @@ function toggleFolderChildren(folderId) {
   const isOpen = box.style.display !== 'none';
   box.style.display = isOpen ? 'none' : 'grid';
 
-  // Toggle arrow state
   const node = document.querySelector(`.fm-node[data-nodeid="${folderId}"]`);
   if (node) node.classList.toggle('open', !isOpen);
 }
@@ -858,14 +860,12 @@ function filterFolders() {
   const nodes = Array.from(document.querySelectorAll('.fm-node'));
 
   if (!q) {
-    // reset: show roots, hide all children containers
     nodes.forEach(n => n.style.display = '');
     document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
     document.querySelectorAll('.fm-node').forEach(n => n.classList.remove('open'));
     return;
   }
 
-  // basic filter: show nodes whose name matches; also show their ancestors
   const tiles = Array.from(document.querySelectorAll('.fm-tile'));
   const matchedIds = new Set();
 
@@ -874,7 +874,6 @@ function filterFolders() {
     if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
   });
 
-  // helper: walk up by DOM parents
   function showAncestors(nodeEl) {
     let p = nodeEl.parentElement;
     while (p) {
