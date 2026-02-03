@@ -552,6 +552,74 @@ th {
 
 .filem-selected { margin-top: 8px; }
 
+
+/* ================= FILE MANAGEMENT MODAL (2 COLUMNS) ================= */
+.filem-layout{
+  display: grid;
+  grid-template-columns: 2fr 1fr; /* folders wider than upload */
+  gap: 0;
+  min-height: 70vh;
+}
+
+.filem-list{
+  border: 1px solid #e6e6e6;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 70vh;
+}
+
+.filem-toolbar{
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+/* folders area */
+.filem-folders{
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* grid for tiles (Windows-style icons) */
+.filem-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+/* Right column card wrapper + subtle vertical divider */
+.filem-upload{
+  padding-left: 16px;
+  margin-left: 16px;
+  border-left: 1px solid #e6e6e6; /* subtle divider */
+  min-height: 70vh;
+}
+
+.filem-selected{
+  margin-top: 10px;
+}
+
+/* Make tiles in file modal behave the same */
+.filem-tile{}
+
+/* MOBILE: stack columns */
+@media (max-width: 900px){
+  .filem-layout{ grid-template-columns: 1fr; }
+  .filem-upload{
+    border-left: none;
+    margin-left: 0;
+    padding-left: 0;
+    margin-top: 12px;
+    min-height: auto;
+  }
+  .filem-list{ min-height: auto; }
+  .filem-grid{ grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+}
+
 /* FOOTER */
 footer {
   margin-top: 25px;
