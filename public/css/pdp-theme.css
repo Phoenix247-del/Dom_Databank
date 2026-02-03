@@ -552,11 +552,6 @@ th {
 
 .filem-selected { margin-top: 8px; }
 
-.filem-upload {
-  border-left: 1px solid #e6e6e6;
-  padding-left: 12px;
-}
-
 /* FOOTER */
 footer {
   margin-top: 25px;
@@ -628,11 +623,6 @@ footer {
   .fm-children {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   }
-
-
-  /* File Management modal: stack columns on mobile */
-  .filem-layout { grid-template-columns: 1fr; }
-  .filem-upload { border-left: none; padding-left: 0; border-top: 1px solid #e6e6e6; padding-top: 12px; }
 }
 
 /* ✅ EXTRA MOBILE HEADER FIX (this is what solves your screenshot issue) */
@@ -689,4 +679,19 @@ footer {
   .filem-upload .sub-card { min-height: auto; }
   .filem-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 
+}
+/* ===== File Management Modal: column divider ===== */
+.filem-upload{
+  border-left: 1px solid rgba(0,0,0,0.12);
+  padding-left: 14px;
+}
+.filem-list{
+  padding-right: 6px;
+}
+
+/* ===== Folder tree: ensure open nodes show children ===== */
+.fm-node.open > .fm-children{ display: grid; }
+
+@media (max-width: 900px){
+  .filem-upload{ border-left: none; padding-left: 0; }
 }

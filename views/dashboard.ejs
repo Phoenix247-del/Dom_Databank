@@ -35,7 +35,7 @@
   // ===== Folder tree helpers (requires folders.parent_id in DB) =====
   const allFolders = (folders || []).map(f => ({
     ...f,
-    parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined' || Number(f.parent_id) === 0) ? null : Number(f.parent_id)
+    parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
   }));
 
   const folderById = new Map(allFolders.map(f => [String(f.id), f]));
@@ -79,7 +79,7 @@
       const hasChildren = (childrenMap.get(childId) || []).length > 0;
 
       out += `
-        <div class="fm-node" data-nodeid="${childId}" data-depth="${depth}">
+        <div class="fm-node${hasChildren ? ' open' : ''}" data-nodeid="${childId}" data-depth="${depth}">
           <button
             type="button"
             class="fm-tile"
@@ -93,7 +93,7 @@
           </button>
 
           ${hasChildren ? `
-            <div class="fm-children" data-parent="${childId}" style="display:none;">
+            <div class="fm-children" data-parent="${childId}" style="display:grid;">
               ${renderFolderTiles(childId, depth + 1)}
             </div>
           ` : ``}
@@ -355,9 +355,11 @@
 
         <div class="filem-folders filem-grid" id="fileFoldersContainer">
           <% 
+            // Reuse the same tiles renderer; for file upload we show ALL folders available to this user.
+            // NOTE: "folders" is already filtered by backend for non-admin users.
             const fileFolders = (folders || []).map(f => ({
               ...f,
-              parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined' || Number(f.parent_id) === 0) ? null : Number(f.parent_id)
+              parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
             }));
 
             const fileChildren = new Map();
@@ -444,12 +446,12 @@
 
     <div class="fm-layout">
 
-      <!-- Column 1: Search + ICON GRID -->
+      <!-- Column 1: Search + ICON GRID (only main folders shown initially) -->
       <div class="fm-list">
         <div class="fm-toolbar">
           <input id="folderSearch" type="text" placeholder="Search folders..." onkeyup="filterFolders()">
           <div class="hint small" style="margin:8px 0 0;">
-            Click a folder tile to expand its subfolders (or use the small arrow).
+            Main folders are shown first. Click the small arrow on a folder to expand/collapse its subfolders.
           </div>
         </div>
 
@@ -601,7 +603,6 @@ function showToast(message, type = "success") {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 })();
-
 /* ================= Print helper ================= */
 function printFile(url) {
   const iframe = document.createElement('iframe');
@@ -702,21 +703,18 @@ function deleteSelectedUser() {
   f.submit();
 }
 
+
 /* ================= File Management (2 columns + Folder Icons) ================= */
 let selectedUploadFolderId = null;
 
 function onFileFolderTileClick(e, tile) {
-  const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
+  const toggleClicked = (e && e.target && e.target.closest) ? e.target.closest('.fm-toggle') : null;
   const folderId = tile.dataset.folderid;
-  const hasChildren = tile.dataset.haschildren === '1';
 
   if (toggleClicked) {
     toggleFileFolderChildren(folderId);
     return;
   }
-
-  // ✅ improvement: clicking folder tile also expands if it has children
-  if (hasChildren) toggleFileFolderChildren(folderId);
 
   selectFileFolderTile(tile);
 }
@@ -792,22 +790,21 @@ function filterFileFolders() {
   });
 }
 
+
 /* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
 let selectedFolderId = null;
 
 function onFolderTileClick(e, tile) {
-  const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
+  // If user clicked the toggle arrow, expand/collapse ONLY
+  const toggleClicked = (e && e.target && e.target.closest) ? e.target.closest('.fm-toggle') : null;
   const folderId = tile.dataset.folderid;
-  const hasChildren = tile.dataset.haschildren === '1';
 
   if (toggleClicked) {
     toggleFolderChildren(folderId);
     return;
   }
 
-  // ✅ improvement: clicking folder tile also expands if it has children
-  if (hasChildren) toggleFolderChildren(folderId);
-
+  // Otherwise select folder
   selectFolderTile(tile);
 }
 
@@ -851,6 +848,7 @@ function toggleFolderChildren(folderId) {
   const isOpen = box.style.display !== 'none';
   box.style.display = isOpen ? 'none' : 'grid';
 
+  // Toggle arrow state
   const node = document.querySelector(`.fm-node[data-nodeid="${folderId}"]`);
   if (node) node.classList.toggle('open', !isOpen);
 }
@@ -860,12 +858,14 @@ function filterFolders() {
   const nodes = Array.from(document.querySelectorAll('.fm-node'));
 
   if (!q) {
+    // reset: show roots, hide all children containers
     nodes.forEach(n => n.style.display = '');
     document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
     document.querySelectorAll('.fm-node').forEach(n => n.classList.remove('open'));
     return;
   }
 
+  // basic filter: show nodes whose name matches; also show their ancestors
   const tiles = Array.from(document.querySelectorAll('.fm-tile'));
   const matchedIds = new Set();
 
@@ -874,6 +874,7 @@ function filterFolders() {
     if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
   });
 
+  // helper: walk up by DOM parents
   function showAncestors(nodeEl) {
     let p = nodeEl.parentElement;
     while (p) {
