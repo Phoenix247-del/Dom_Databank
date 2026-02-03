@@ -437,15 +437,18 @@ th {
 /* ✅ Small expand/collapse arrow (top-right) */
 .fm-toggle {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 12px;
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  border: 1px solid #e6e6e6;
-  background: #fff;
   display: grid;
   place-items: center;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(0,0,0,0.08);
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 3;
 }
 
 .fm-toggle::before {
@@ -523,7 +526,11 @@ th {
   display: flex;
   flex-direction: column;
   min-height: 70vh;
+
+  border-right: 1px solid rgba(0,0,0,0.08);
+  padding-right: 16px;
 }
+
 
 .filem-toolbar {
   padding: 10px;
@@ -533,7 +540,7 @@ th {
 .filem-folders {
   flex: 1;
   overflow: auto;
-  padding: 12px;
+  padding:  12px 12px 12px;
 }
 
 .filem-grid {
@@ -674,24 +681,10 @@ footer {
     white-space: nowrap;
   }
 }
+
+@media (max-width: 900px) {
   .filem-layout { grid-template-columns: 1fr; }
   .filem-list { min-height: auto; }
   .filem-upload .sub-card { min-height: auto; }
   .filem-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
-
-}
-/* ===== File Management Modal: column divider ===== */
-.filem-upload{
-  border-left: 1px solid rgba(0,0,0,0.12);
-  padding-left: 14px;
-}
-.filem-list{
-  padding-right: 6px;
-}
-
-/* ===== Folder tree: ensure open nodes show children ===== */
-.fm-node.open > .fm-children{ display: grid; }
-
-@media (max-width: 900px){
-  .filem-upload{ border-left: none; padding-left: 0; }
 }

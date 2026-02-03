@@ -708,10 +708,11 @@ function deleteSelectedUser() {
 let selectedUploadFolderId = null;
 
 function onFileFolderTileClick(e, tile) {
-  const toggleClicked = (e && e.target && e.target.closest) ? e.target.closest('.fm-toggle') : null;
+  const toggleClicked = (e && e.target && (e.target.classList && e.target.classList.contains('fm-toggle') || (e.target.closest && e.target.closest('.fm-toggle'))));
   const folderId = tile.dataset.folderid;
 
   if (toggleClicked) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     toggleFileFolderChildren(folderId);
     return;
   }
@@ -743,7 +744,7 @@ function toggleFileFolderChildren(folderId) {
   if (!box) return;
 
   const isOpen = box.style.display !== 'none';
-  box.style.display = isOpen ? 'none' : 'grid';
+  box.style.display = isOpen ? 'none' : '';
 
   const node = document.querySelector(`#fileFoldersContainer .fm-node[data-nodeid="${folderId}"]`);
   if (node) node.classList.toggle('open', !isOpen);
@@ -796,10 +797,11 @@ let selectedFolderId = null;
 
 function onFolderTileClick(e, tile) {
   // If user clicked the toggle arrow, expand/collapse ONLY
-  const toggleClicked = (e && e.target && e.target.closest) ? e.target.closest('.fm-toggle') : null;
+  const toggleClicked = (e && e.target && (e.target.classList && e.target.classList.contains('fm-toggle') || (e.target.closest && e.target.closest('.fm-toggle'))));
   const folderId = tile.dataset.folderid;
 
   if (toggleClicked) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     toggleFolderChildren(folderId);
     return;
   }
@@ -846,7 +848,7 @@ function toggleFolderChildren(folderId) {
   if (!box) return;
 
   const isOpen = box.style.display !== 'none';
-  box.style.display = isOpen ? 'none' : 'grid';
+  box.style.display = isOpen ? 'none' : '';
 
   // Toggle arrow state
   const node = document.querySelector(`.fm-node[data-nodeid="${folderId}"]`);
