@@ -48,7 +48,6 @@ header {
   text-align: right;
   font-size: 13px;
   color: #006400;
-  line-height: 1.25;
 }
 
 .logout-btn {
@@ -347,14 +346,14 @@ th {
   border-bottom: 1px solid #eee;
 }
 
-/* ✅ Windows-style folder grid container */
+/* Windows-style folder grid container */
 .fm-folders {
   flex: 1;
   overflow: auto;
   padding: 12px;
 }
 
-/* ✅ Root grid */
+/* Root grid */
 .fm-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -367,7 +366,7 @@ th {
   position: relative;
 }
 
-/* ✅ Folder tile button (icon + name underneath) */
+/* Folder tile button (icon + name underneath) */
 .fm-tile {
   width: 100%;
   border: 1px solid transparent;
@@ -394,7 +393,7 @@ th {
   box-shadow: 0 8px 18px rgba(0,0,0,0.12);
 }
 
-/* ✅ Folder icon (CSS-only) */
+/* Folder icon (CSS-only) */
 .fm-icon {
   width: 58px;
   height: 42px;
@@ -434,7 +433,7 @@ th {
   word-break: break-word;
 }
 
-/* ✅ Small expand/collapse arrow (top-right) */
+/* Small expand/collapse arrow (top-right) */
 .fm-toggle {
   position: absolute;
   top: 8px;
@@ -464,7 +463,7 @@ th {
   transform: rotate(90deg);
 }
 
-/* ✅ Children container */
+/* Children container (hidden by default in HTML, shown as grid when expanded) */
 .fm-children {
   margin-top: 10px;
   padding: 10px;
@@ -481,22 +480,6 @@ th {
 .fm-node[data-depth="2"] { margin-left: 16px; }
 .fm-node[data-depth="3"] { margin-left: 22px; }
 
-/* Old list styles kept (in case other parts still use them) */
-.fm-folder {
-  width: 100%;
-  border: none;
-  background: #fff;
-  text-align: left;
-  padding: 10px;
-  cursor: pointer;
-  border-bottom: 1px solid #f1f1f1;
-}
-.fm-folder:hover { background: #f7fbf7; }
-.fm-folder.active { background: #e9f7ea; }
-
-.fm-folder-name { font-weight: bold; color: #006400; }
-.fm-folder-meta { font-size: 12px; color: #555; margin-top: 2px; }
-
 .fm-create .sub-card,
 .fm-modify .sub-card {
   min-height: 70vh;
@@ -505,14 +488,14 @@ th {
 
 .fm-modify .action-btn { margin-top: 6px; }
 
-
-/* ================= FILE MANAGEMENT MODAL (FULL SCREEN, 2 COLUMNS) ================= */
+/* ================= FILE MANAGEMENT (2 columns) ================= */
+/* IMPORTANT: This fixes the "rows" layout by explicitly using CSS grid. */
 .filem-layout {
   display: grid;
-  grid-template-columns: 2.2fr 1fr; /* left wider than right */
-  gap: 12px;
-  margin-top: 10px;
-  min-height: 70vh;
+  grid-template-columns: 2fr 1fr; /* folders wider */
+  gap: 14px;
+  margin-top: 12px;
+  align-items: start;
 }
 
 .filem-list {
@@ -536,6 +519,7 @@ th {
   padding: 12px;
 }
 
+/* Reuse folder-grid behavior for file modal */
 .filem-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -543,81 +527,20 @@ th {
   align-content: start;
 }
 
-.filem-tile { padding: 12px 10px 10px; }
+.filem-upload {
+  min-height: 70vh;
+  padding-left: 14px;
+  border-left: 1px solid #e6e6e6; /* subtle vertical divider */
+}
 
+/* Make the upload card stick a little nicer on tall lists */
 .filem-upload .sub-card {
-  min-height: 70vh;
-  overflow: auto;
+  position: sticky;
+  top: 0;
 }
 
-.filem-selected { margin-top: 8px; }
-
-
-/* ================= FILE MANAGEMENT MODAL (2 COLUMNS) ================= */
-.filem-layout{
-  display: grid;
-  grid-template-columns: 2fr 1fr; /* folders wider than upload */
-  gap: 0;
-  min-height: 70vh;
-}
-
-.filem-list{
-  border: 1px solid #e6e6e6;
-  border-radius: 4px;
-  overflow: hidden;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  min-height: 70vh;
-}
-
-.filem-toolbar{
-  padding: 10px;
-  border-bottom: 1px solid #eee;
-}
-
-/* folders area */
-.filem-folders{
-  flex: 1;
-  overflow: auto;
-  padding: 12px;
-}
-
-/* grid for tiles (Windows-style icons) */
-.filem-grid{
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 14px;
-  align-content: start;
-}
-
-/* Right column card wrapper + subtle vertical divider */
-.filem-upload{
-  padding-left: 16px;
-  margin-left: 16px;
-  border-left: 1px solid #e6e6e6; /* subtle divider */
-  min-height: 70vh;
-}
-
-.filem-selected{
-  margin-top: 10px;
-}
-
-/* Make tiles in file modal behave the same */
-.filem-tile{}
-
-/* MOBILE: stack columns */
-@media (max-width: 900px){
-  .filem-layout{ grid-template-columns: 1fr; }
-  .filem-upload{
-    border-left: none;
-    margin-left: 0;
-    padding-left: 0;
-    margin-top: 12px;
-    min-height: auto;
-  }
-  .filem-list{ min-height: auto; }
-  .filem-grid{ grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+.filem-selected input {
+  margin-bottom: 8px;
 }
 
 /* FOOTER */
@@ -679,6 +602,15 @@ footer {
   .fm-layout { grid-template-columns: 1fr; }
   .fm-create .sub-card, .fm-modify .sub-card { min-height: auto; }
 
+  /* File modal stacks on mobile */
+  .filem-layout { grid-template-columns: 1fr; }
+  .filem-upload {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid #e6e6e6;
+    padding-top: 14px;
+  }
+
   .search-bar { flex-wrap: wrap; }
   .search-keyword { width: 100%; max-width: 100%; }
   .search-date { width: 100%; }
@@ -688,63 +620,8 @@ footer {
 
   /* tighter tiles on mobile */
   .fm-grid,
-  .fm-children {
+  .fm-children,
+  .filem-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   }
-}
-
-/* ✅ EXTRA MOBILE HEADER FIX (this is what solves your screenshot issue) */
-@media (max-width: 600px) {
-  header {
-    padding: 10px 12px;
-    flex-direction: column;          /* stack title above right-controls */
-    align-items: stretch;
-    gap: 8px;
-    flex-wrap: nowrap;               /* stop weird wrapping patterns */
-  }
-
-  .header-title {
-    order: 1;
-    width: 100%;
-  }
-
-  /* Make the long title readable without splitting into letters */
-  .title-line1,
-  .title-line2 {
-    letter-spacing: 0.5px;
-    word-break: normal;
-    overflow-wrap: anywhere;
-    line-height: 1.15;
-  }
-
-  .title-line1 { font-size: 16px; }
-  .title-line2 { font-size: 12px; letter-spacing: 1px; }
-
-  .header-right {
-    order: 2;
-    width: 100%;
-    justify-content: space-between;  /* logo left, user+logout right */
-    gap: 8px;
-  }
-
-  .header-right img { height: 32px; }
-
-  .user-info {
-    text-align: left;                /* looks cleaner on mobile */
-    font-size: 12px;
-    line-height: 1.15;
-  }
-
-  .logout-btn {
-    padding: 7px 10px;
-    font-size: 12px;
-    border-radius: 4px;
-    white-space: nowrap;
-  }
-}
-  .filem-layout { grid-template-columns: 1fr; }
-  .filem-list { min-height: auto; }
-  .filem-upload .sub-card { min-height: auto; }
-  .filem-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
-
 }
