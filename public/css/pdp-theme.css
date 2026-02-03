@@ -681,7 +681,7 @@ footer {
     white-space: nowrap;
   }
 }
-1
+
 @media (max-width: 900px) {
   .filem-layout { grid-template-columns: 1fr; }
   .filem-list { min-height: auto; }
