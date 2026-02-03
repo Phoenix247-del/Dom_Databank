@@ -35,7 +35,7 @@
   // ===== Folder tree helpers (requires folders.parent_id in DB) =====
   const allFolders = (folders || []).map(f => ({
     ...f,
-    parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
+    parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined' || Number(f.parent_id) === 0) ? null : Number(f.parent_id)
   }));
 
   const folderById = new Map(allFolders.map(f => [String(f.id), f]));
@@ -359,7 +359,7 @@
             // NOTE: "folders" is already filtered by backend for non-admin users.
             const fileFolders = (folders || []).map(f => ({
               ...f,
-              parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
+              parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined' || Number(f.parent_id) === 0) ? null : Number(f.parent_id)
             }));
 
             const fileChildren = new Map();
