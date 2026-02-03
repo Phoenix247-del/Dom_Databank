@@ -795,14 +795,19 @@ function filterFileFolders() {
 /* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
 let selectedFolderId = null;
 
+// IMPORTANT: There are TWO folder trees on this page (File Management + Folder Management).
+// So every selector here must be scoped to the Folder Management modal, otherwise the first
+// matching element (often in the File modal) gets toggled and it looks like “nothing happened”.
 function onFolderTileClick(e, tile) {
   // If user clicked the toggle arrow, expand/collapse ONLY
-  const toggleClicked = (e && e.target && (e.target.classList && e.target.classList.contains('fm-toggle') || (e.target.closest && e.target.closest('.fm-toggle'))));
+  const toggleEl = (e && e.target && e.target.closest) ? e.target.closest('.fm-toggle') : null;
   const folderId = tile.dataset.folderid;
+  const node = tile.closest('.fm-node');
 
-  if (toggleClicked) {
-    if (e) { e.preventDefault(); e.stopPropagation(); }
-    toggleFolderChildren(folderId);
+  if (toggleEl) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+    toggleFolderChildren(folderId, node);
     return;
   }
 
@@ -811,7 +816,8 @@ function onFolderTileClick(e, tile) {
 }
 
 function selectFolderTile(tile) {
-  document.querySelectorAll('.fm-tile').forEach(b => b.classList.remove('active'));
+  // Scope active state to Folder Management modal ONLY
+  document.querySelectorAll('#folderModal .fm-tile').forEach(b => b.classList.remove('active'));
   tile.classList.add('active');
 
   selectedFolderId = tile.dataset.folderid;
@@ -843,32 +849,35 @@ function selectFolderTile(tile) {
   if (hint) hint.innerText = `Selected: ${folderName} (ID: ${selectedFolderId})`;
 }
 
-function toggleFolderChildren(folderId) {
-  const box = document.querySelector(`.fm-children[data-parent="${folderId}"]`);
+function toggleFolderChildren(folderId, nodeEl) {
+  // Prefer local node scope (prevents collision with File modal tree)
+  const node = nodeEl || document.querySelector(`#folderModal .fm-node[data-nodeid="${folderId}"]`);
+  if (!node) return;
+
+  const box = node.querySelector(`.fm-children[data-parent="${folderId}"]`);
   if (!box) return;
 
   const isOpen = box.style.display !== 'none';
-  box.style.display = isOpen ? 'none' : '';
+  box.style.display = isOpen ? 'none' : 'grid';
 
   // Toggle arrow state
-  const node = document.querySelector(`.fm-node[data-nodeid="${folderId}"]`);
-  if (node) node.classList.toggle('open', !isOpen);
+  node.classList.toggle('open', !isOpen);
 }
 
 function filterFolders() {
   const q = (document.getElementById('folderSearch').value || '').toLowerCase().trim();
-  const nodes = Array.from(document.querySelectorAll('.fm-node'));
+  const nodes = Array.from(document.querySelectorAll('#folderModal .fm-node'));
 
   if (!q) {
     // reset: show roots, hide all children containers
     nodes.forEach(n => n.style.display = '');
-    document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
-    document.querySelectorAll('.fm-node').forEach(n => n.classList.remove('open'));
+    document.querySelectorAll('#folderModal .fm-children').forEach(c => c.style.display = 'none');
+    document.querySelectorAll('#folderModal .fm-node').forEach(n => n.classList.remove('open'));
     return;
   }
 
   // basic filter: show nodes whose name matches; also show their ancestors
-  const tiles = Array.from(document.querySelectorAll('.fm-tile'));
+  const tiles = Array.from(document.querySelectorAll('#folderModal .fm-tile'));
   const matchedIds = new Set();
 
   tiles.forEach(t => {
@@ -876,14 +885,14 @@ function filterFolders() {
     if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
   });
 
-  // helper: walk up by DOM parents
+  // helper: walk up by DOM parents (within this modal)
   function showAncestors(nodeEl) {
     let p = nodeEl.parentElement;
     while (p) {
       if (p.classList && p.classList.contains('fm-children')) {
         p.style.display = 'grid';
         const pid = p.getAttribute('data-parent');
-        const parentNode = document.querySelector(`.fm-node[data-nodeid="${pid}"]`);
+        const parentNode = document.querySelector(`#folderModal .fm-node[data-nodeid="${pid}"]`);
         if (parentNode) parentNode.classList.add('open');
       }
       p = p.parentElement;
@@ -909,7 +918,6 @@ function deleteSelectedFolder() {
   document.body.appendChild(f);
   f.submit();
 }
-
 /* ================= Best-effort anti-screenshot (non-admin) ================= */
 (function () {
   const isAdmin = "<%= user.role %>" === "admin";
