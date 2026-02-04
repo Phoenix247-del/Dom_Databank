@@ -51,9 +51,11 @@ app.use('/uploads', express.static(UPLOAD_ROOT));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-/* ================= HEALTH ROUTES ================= */
-// ✅ Root returns 200 (helps default platform health checks)
-app.get('/', (req, res) => res.status(200).send('Dom Databank is running'));
+/* ================= HEALTH + HOMEPAGE ================= */
+// ✅ Homepage (www.domdocuments.com)
+app.get('/', (req, res) => {
+  return res.render('home');
+});
 
 // ✅ Dedicated health endpoint
 app.get('/health', (req, res) => res.status(200).send('OK'));

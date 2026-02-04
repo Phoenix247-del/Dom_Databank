@@ -688,3 +688,113 @@ footer {
   .filem-upload .sub-card { min-height: auto; }
   .filem-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 }
+
+/* ================== HOMEPAGE (/) ================== */
+.home-body {
+  min-height: 100vh;
+  margin: 0;
+}
+
+.home-hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+
+  /* PDP-themed premium banner background (no image required) */
+  background:
+    radial-gradient(800px 500px at 20% 20%, rgba(0, 130, 62, 0.25), transparent 60%),
+    radial-gradient(900px 600px at 80% 30%, rgba(225, 28, 44, 0.22), transparent 62%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 8px,
+      rgba(0, 0, 0, 0.04) 8px,
+      rgba(0, 0, 0, 0.04) 16px
+    ),
+    linear-gradient(180deg, #0a0f0c 0%, #0a1110 50%, #070b09 100%);
+}
+
+.home-glass {
+  width: min(960px, 100%);
+  border-radius: 18px;
+  padding: 48px 28px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 20, 16, 0.62);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+}
+
+.home-logo {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 14px;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+}
+
+.home-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #ffffff;
+  text-transform: uppercase;
+}
+
+.home-subtitle {
+  margin: 10px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.92);
+  text-transform: uppercase;
+}
+
+.home-accent {
+  width: 140px;
+  height: 4px;
+  margin: 18px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #00823e, #e11c2c);
+}
+
+.home-cta {
+  margin-top: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(0, 130, 62, 0.95), rgba(225, 28, 44, 0.95));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+
+.home-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+  filter: brightness(1.05);
+}
+
+.home-footnote {
+  margin: 16px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+@media (max-width: 520px) {
+  .home-glass { padding: 36px 18px; }
+  .home-logo { width: 96px; height: 96px; }
+  .home-title { font-size: 18px; }
+  .home-subtitle { font-size: 15px; }
+}
