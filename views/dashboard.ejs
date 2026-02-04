@@ -589,6 +589,7 @@ function showToast(message, type = "success") {
   const error = params.get("error");
   const info = params.get("info");
   const open = params.get("open");
+  const folderId = params.get("folder_id");
 
   if (success) showToast(success, "success");
   if (error) showToast(error, "error");
@@ -597,9 +598,41 @@ function showToast(message, type = "success") {
   // Keep requested modal open after redirects (e.g. /dashboard?open=userModal)
   if (open) {
     try { openModal(open); } catch (e) {}
+
+    // Restore file upload folder selection after upload redirect
+    if (open === 'fileModal' && folderId) {
+      setTimeout(() => {
+        try {
+          const tile = document.querySelector(`#fileFoldersContainer .fm-tile[data-folderid="${CSS.escape(folderId)}"]`);
+          if (tile) {
+            // Ensure all ancestors are expanded so the tile is visible
+            let p = tile.parentElement;
+            while (p) {
+              if (p.classList && p.classList.contains('fm-children')) {
+                p.style.display = 'grid';
+                const pid = p.getAttribute('data-parent');
+                const parentNode = document.querySelector(`#fileFoldersContainer .fm-node[data-nodeid="${CSS.escape(pid)}"]`);
+                if (parentNode) parentNode.classList.add('open');
+              }
+              p = p.parentElement;
+            }
+            selectFileFolderTile(tile);
+            tile.scrollIntoView({ block: 'center' });
+          } else {
+            // Fallback: at least set the hidden select so upload works
+            const sel = document.getElementById('filemFolderSelect');
+            if (sel) sel.value = String(folderId);
+            const idEl = document.getElementById('filemFolderId');
+            if (idEl) idEl.value = String(folderId);
+            const uploadBtn = document.getElementById('filemUploadBtn');
+            if (uploadBtn) uploadBtn.disabled = false;
+          }
+        } catch (e) {}
+      }, 50);
+    }
   }
 
-  if (success || error || info || open) {
+  if (success || error || info || open || folderId) {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 })();
