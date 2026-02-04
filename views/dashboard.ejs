@@ -415,14 +415,11 @@
           <div class="filem-selected">
             <label class="label">Selected Folder</label>
             <input id="filemFolderName" type="text" disabled placeholder="No folder selected">
-            <input id="filemFolderId" type="hidden" name="folder_id" form="fileUploadForm" value="">
           </div>
 
           <form id="fileUploadForm" method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
-            <!-- Fallback select (hidden) -->
-            <select id="filemFolderSelect" name="folder_id" required style="display:none;">
-              <%- renderFolderOptions('root', 0) %>
-            </select>
+            <!-- Folder chosen from the left column (set by JS) -->
+            <input id="filemFolderId" type="hidden" name="folder_id" value="">
 
             <input type="file" name="document" required>
             <button id="filemUploadBtn" class="action-btn red" type="submit" disabled>Upload File</button>

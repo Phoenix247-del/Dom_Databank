@@ -129,11 +129,17 @@ function loadLogs(cb) {
 /* ================= UPLOAD FILE ================= */
 exports.uploadFile = async (req, res) => {
   const user = req.session.user;
-  const folder_id = Number(req.body.folder_id);
+  // folder_id can arrive as a string OR an array (e.g., when multiple inputs share the same name)
+  let folderRaw = req.body.folder_id;
+  if (Array.isArray(folderRaw)) {
+    // pick the last non-empty value
+    folderRaw = [...folderRaw].reverse().find(v => String(v || '').trim() !== '') || '';
+  }
+  const folder_id = Number(String(folderRaw || '').trim());
   const file = req.file;
 
   if (!file) return res.status(400).send('No file uploaded');
-  if (!folder_id) return res.status(400).send('Folder is required');
+  if (!Number.isFinite(folder_id) || folder_id <= 0) return res.status(400).send('Folder is required');
 
   // ✅ ENFORCE: user can only upload to assigned folders
   if (user.role !== 'admin') {
@@ -151,7 +157,11 @@ exports.uploadFile = async (req, res) => {
         console.error('File upload error:', err);
         return res.status(500).send('File upload failed');
       }
-      res.redirect('/dashboard');
+      // Keep File Management modal open and preserve selected folder after upload
+      // so users can upload multiple files without re-selecting the folder.
+      const glue = '?';
+      const qs = `open=fileModal&folder_id=${encodeURIComponent(String(folder_id))}`;
+      return res.redirect(`/dashboard${glue}${qs}&success=${encodeURIComponent('File uploaded successfully.')}`);
     }
   );
 };
