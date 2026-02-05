@@ -79,7 +79,7 @@
       const hasChildren = (childrenMap.get(childId) || []).length > 0;
 
       out += `
-        <div class="fm-node" data-nodeid="${childId}" data-depth="${depth}">
+        <div class="fm-node${hasChildren ? ' open' : ''}" data-nodeid="${childId}" data-depth="${depth}">
           <button
             type="button"
             class="fm-tile"
@@ -93,7 +93,7 @@
           </button>
 
           ${hasChildren ? `
-            <div class="fm-children" data-parent="${childId}" style="display:none;">
+            <div class="fm-children" data-parent="${childId}" style="display:grid;">
               ${renderFolderTiles(childId, depth + 1)}
             </div>
           ` : ``}
@@ -106,7 +106,7 @@
 %>
 
 <header>
-  <div class="header-left"><a href="/" class="home-btn">Home</a></div>
+  <div class="header-left"></div>
 
   <div class="header-title">
     <h1 class="title-line1">DIRECTORATE OF ORGANIZATION AND MOBILIZATION</h1>
@@ -204,25 +204,6 @@
           </tr>
           <% }) %>
         </table>
-
-        <% if (!safeSelectedFolderName && typeof totalPages !== 'undefined' && totalPages > 1) { %>
-          <div class="pagination">
-            <% const prev = Math.max((currentPage || 1) - 1, 1); %>
-            <% const next = Math.min((currentPage || 1) + 1, totalPages); %>
-
-            <a class="page-link <%= (currentPage || 1) === 1 ? 'disabled' : '' %>" href="/dashboard?page=<%= prev %>">Prev</a>
-
-            <% 
-              const startPage = Math.max((currentPage || 1) - 2, 1);
-              const endPage = Math.min(startPage + 4, totalPages);
-              for (let p = startPage; p <= endPage; p++) { 
-            %>
-              <a class="page-link <%= p === (currentPage || 1) ? 'active' : '' %>" href="/dashboard?page=<%= p %>"><%= p %></a>
-            <% } %>
-
-            <a class="page-link <%= (currentPage || 1) === totalPages ? 'disabled' : '' %>" href="/dashboard?page=<%= next %>">Next</a>
-          </div>
-        <% } %>
 
         <% if (!isAdmin) { %>
           <p class="hint small" style="margin-top:10px;">
@@ -440,8 +421,8 @@
             <!-- Folder chosen from the left column (set by JS) -->
             <input id="filemFolderId" type="hidden" name="folder_id" value="">
 
-            <input type="file" name="documents" multiple required>
-            <button id="filemUploadBtn" class="action-btn red" type="submit" disabled>Upload Files</button>
+            <input type="file" name="document" required>
+            <button id="filemUploadBtn" class="action-btn red" type="submit" disabled>Upload File</button>
 
             <p class="hint small" style="margin-top:10px;">
               Tip: If you can’t see a folder here, ask Admin to assign it to your account.
