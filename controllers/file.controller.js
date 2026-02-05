@@ -52,42 +52,16 @@ function userHasFolderAccess(userId, folderId) {
 
 /* Load folders for admin or assigned folders for users */
 function loadFoldersForUser(user, cb) {
-  if (user.role === 'admin') {
-    db.query('SELECT * FROM folders ORDER BY created_at DESC', cb);
-  } else {
-    db.query(
-      `
-        SELECT f.*
-        FROM folders f
-        INNER JOIN user_folder_access ufa
-          ON ufa.folder_id = f.id
-        WHERE ufa.user_id = ?
-        ORDER BY f.created_at DESC
-      `,
-      [user.id],
-      cb
-    );
-  }
+  // Per requirement: all authenticated users can view all folders/subfolders.
+  db.query('SELECT id, name, parent_id FROM folders ORDER BY name ASC, id ASC', cb);
 }
 
 /* Load files for admin or assigned folder files for users (optionally filtered) */
-function loadFilesForUser(user, { folderId = null, keyword = '', date = '' }, cb) {
-  let sql = `
-    SELECT fi.*
-    FROM files fi
-  `;
+function loadFilesForUser(user, { folderId = null, keyword = null, date = null }, cb) {
+  // Per requirement: ALL authenticated users can view files in folders (read access is not restricted).
+  // (Upload can still be restricted elsewhere via UI/assignment if you want.)
+  let sql = 'SELECT fi.* FROM files fi WHERE 1=1 ';
   const params = [];
-
-  if (user.role !== 'admin') {
-    sql += `
-      INNER JOIN user_folder_access ufa
-        ON ufa.folder_id = fi.folder_id
-       AND ufa.user_id = ?
-    `;
-    params.push(user.id);
-  }
-
-  sql += ' WHERE 1=1 ';
 
   if (folderId) {
     sql += ' AND fi.folder_id = ? ';
@@ -107,6 +81,7 @@ function loadFilesForUser(user, { folderId = null, keyword = '', date = '' }, cb
   sql += ' ORDER BY fi.uploaded_at DESC ';
 
   db.query(sql, params, cb);
+}
 }
 
 /* Load logs for admin */

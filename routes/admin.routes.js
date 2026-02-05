@@ -28,115 +28,99 @@ function redirectWithMessage(req, res, type, message, fallback) {
 router.get('/dashboard', isAuthenticated, (req, res) => {
   const user = req.session.user;
 
-  // Files query
-  let filesSql = 'SELECT * FROM files ORDER BY uploaded_at DESC';
-  let filesParams = [];
+  // Pagination for Recent Files
+  const PER_PAGE = 10;
+  const currentPage = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
+  const offset = (currentPage - 1) * PER_PAGE;
 
-  if (user.role !== 'admin') {
-    filesSql = `
-      SELECT fi.*
-      FROM files fi
-      INNER JOIN user_folder_access ufa
-        ON ufa.folder_id = fi.folder_id
-       AND ufa.user_id = ?
-      ORDER BY fi.uploaded_at DESC
-    `;
-    filesParams = [user.id];
-  }
+  // Files query (all users can view recent files)
+  const countSql = 'SELECT COUNT(*) AS cnt FROM files';
+  const filesSql = 'SELECT * FROM files ORDER BY uploaded_at DESC LIMIT ? OFFSET ?';
 
-  db.query(filesSql, filesParams, (err, files) => {
-    if (err) {
-      console.error('Files load error:', err);
-      return res.status(500).send('Error loading files');
+  // Folder list (all users can see folders + subfolders, ordered alphabetically)
+  const foldersSql = 'SELECT id, name, parent_id FROM folders ORDER BY name ASC, id ASC';
+
+  const logsSql = `
+    SELECT l.action, l.created_at, u.fullname, u.email
+    FROM logs l
+    LEFT JOIN users u ON l.user_id = u.id
+    ORDER BY l.created_at DESC
+    LIMIT 100
+  `;
+
+  const accessSql = 'SELECT user_id, folder_id FROM user_folder_access';
+
+  db.query(countSql, (countErr, countRows) => {
+    if (countErr) {
+      console.error('Dashboard count error:', countErr);
+      return res.status(500).send('Error loading dashboard');
     }
 
-    // Folders query
-    let foldersSql = 'SELECT * FROM folders ORDER BY created_at DESC';
-    let foldersParams = [];
+    const totalCount = Number(countRows?.[0]?.cnt || 0);
+    const totalPages = Math.max(Math.ceil(totalCount / PER_PAGE), 1);
 
-    if (user.role !== 'admin') {
-      foldersSql = `
-        SELECT f.*
-        FROM folders f
-        INNER JOIN user_folder_access ufa
-          ON ufa.folder_id = f.id
-        WHERE ufa.user_id = ?
-        ORDER BY f.created_at DESC
-      `;
-      foldersParams = [user.id];
-    }
-
-    db.query(foldersSql, foldersParams, (err2, folders) => {
-      if (err2) {
-        console.error('Folders load error:', err2);
-        return res.status(500).send('Error loading folders');
+    db.query(filesSql, [PER_PAGE, offset], (filesErr, files) => {
+      if (filesErr) {
+        console.error('Dashboard files error:', filesErr);
+        return res.status(500).send('Error loading dashboard');
       }
 
-      // Non-admin render
-      if (user.role !== 'admin') {
-        return res.render('dashboard', {
-          user,
-          files,
-          folders,
-          logs: [],
-          users: [],
-          accessRows: [],
-          selectedFolderId: null,
-          selectedFolderName: null
-        });
-      }
-
-      // Admin extras: logs + users + assignments
-      const logsSql = `
-        SELECT 
-          al.id,
-          al.action,
-          al.created_at,
-          u.fullname,
-          u.email
-        FROM activity_logs al
-        LEFT JOIN users u ON u.id = al.user_id
-        ORDER BY al.created_at DESC
-        LIMIT 200
-      `;
-
-      db.query(logsSql, (err3, logs) => {
-        if (err3) {
-          console.error('Logs load error:', err3);
-          logs = [];
+      db.query(foldersSql, (foldersErr, folders) => {
+        if (foldersErr) {
+          console.error('Dashboard folders error:', foldersErr);
+          return res.status(500).send('Error loading folders');
         }
 
-        db.query(
-          'SELECT id, fullname, email, role, can_search, can_preview, can_print, created_at FROM users ORDER BY created_at DESC',
-          (err4, users) => {
-            if (err4) {
-              console.error('Users load error:', err4);
-              users = [];
+        // Non-admin: no user management / logs needed
+        if (user.role !== 'admin') {
+          return res.render('dashboard', {
+            user,
+            files,
+            folders,
+            selectedFolderName: null,
+            currentPage,
+            totalPages
+          });
+        }
+
+        // Admin extras
+        db.query('SELECT * FROM users', (usersErr, users) => {
+          if (usersErr) {
+            console.error('Dashboard users error:', usersErr);
+            return res.status(500).send('Error loading users');
+          }
+
+          db.query(logsSql, (logsErr, logs) => {
+            if (logsErr) {
+              console.error('Dashboard logs error:', logsErr);
+              return res.status(500).send('Error loading logs');
             }
 
-            db.query('SELECT user_id, folder_id FROM user_folder_access', (err5, accessRows) => {
-              if (err5) {
-                console.error('Access rows load error:', err5);
-                accessRows = [];
+            db.query(accessSql, (accessErr, accessRows) => {
+              if (accessErr) {
+                console.error('Dashboard access error:', accessErr);
+                return res.status(500).send('Error loading access rows');
               }
 
-              return res.render('dashboard', {
+              res.render('dashboard', {
                 user,
                 files,
                 folders,
-                logs,
                 users,
+                logs,
                 accessRows,
-                selectedFolderId: null,
-                selectedFolderName: null
+                selectedFolderName: null,
+                currentPage,
+                totalPages
               });
             });
-          }
-        );
+          });
+        });
       });
     });
   });
 });
+
 
 /* ================= ADMIN: CREATE USER ================= */
 router.post('/admin/create-user', isAuthenticated, isAdmin, async (req, res) => {

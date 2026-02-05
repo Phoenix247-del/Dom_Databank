@@ -30,8 +30,8 @@ const upload = multer({ storage });
 router.post(
   '/upload',
   isAuthenticated,
-  logger('Uploaded a file'),
-  upload.single('document'),
+  logger('Uploaded file(s)'),
+  upload.fields([{ name: 'documents', maxCount: 20 }, { name: 'document', maxCount: 1 }]),
   controller.uploadFile
 );
 
