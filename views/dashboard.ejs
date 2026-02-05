@@ -33,18 +33,10 @@
   }
 
   // ===== Folder tree helpers (requires folders.parent_id in DB) =====
-  const allFoldersRaw = (folders || []).map(f => ({
+  const allFolders = (folders || []).map(f => ({
     ...f,
     parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
   }));
-  // If a folder's parent is not in the list (common when user only has access to a subfolder),
-  // treat it as a root folder so it still renders.
-  const __folderIdSet = new Set(allFoldersRaw.map(f => String(f.id)));
-  const allFolders = allFoldersRaw.map(f => ({
-    ...f,
-    parent_id: (f.parent_id !== null && !__folderIdSet.has(String(f.parent_id))) ? null : f.parent_id
-  }));
-
 
   const folderById = new Map(allFolders.map(f => [String(f.id), f]));
   const childrenMap = new Map();
@@ -97,7 +89,7 @@
             onclick="onFolderTileClick(event, this)">
             <div class="fm-icon" aria-hidden="true"></div>
             <div class="fm-tile-name">${esc(child.name)}</div>
-            ${hasChildren ? `<div class="fm-toggle" title="Expand/Collapse" aria-label="Expand/Collapse"></div>` : ``}
+            ${hasChildren ? `<span class="fm-toggle" role="button" tabindex="0" title="Expand/Collapse" aria-label="Expand/Collapse" onclick="toggleFolderFromToggle(event, this)"></span>` : ``}
           </button>
 
           ${hasChildren ? `
@@ -115,7 +107,7 @@
 
 <header>
   <div class="header-left">
-    <a class="home-btn" href="/dashboard">Home</a>
+    <a class="home-btn" href="/">Home</a>
   </div>
 
   <div class="header-title">
@@ -214,36 +206,6 @@
           </tr>
           <% }) %>
         </table>
-
-        <% 
-          const __currentPage = Number(typeof page !== 'undefined' && page ? page : 1);
-          const __totalPages = Number(typeof totalPages !== 'undefined' && totalPages ? totalPages : 1);
-          const __base = (typeof paginationBase !== 'undefined' && paginationBase) ? paginationBase : '/dashboard';
-        %>
-
-        <% if (__totalPages > 1) { %>
-          <div class="pagination">
-            <% if (__currentPage > 1) { %>
-              <a class="page-link" href="<%= __base %>?page=<%= __currentPage - 1 %>">&laquo; Prev</a>
-            <% } else { %>
-              <span class="page-link disabled">&laquo; Prev</span>
-            <% } %>
-
-            <% for (let p = 1; p <= __totalPages; p++) { %>
-              <% if (p === __currentPage) { %>
-                <span class="page-number active"><%= p %></span>
-              <% } else { %>
-                <a class="page-number" href="<%= __base %>?page=<%= p %>"><%= p %></a>
-              <% } %>
-            <% } %>
-
-            <% if (__currentPage < __totalPages) { %>
-              <a class="page-link" href="<%= __base %>?page=<%= __currentPage + 1 %>">Next &raquo;</a>
-            <% } else { %>
-              <span class="page-link disabled">Next &raquo;</span>
-            <% } %>
-          </div>
-        <% } %>
 
         <% if (!isAdmin) { %>
           <p class="hint small" style="margin-top:10px;">
@@ -379,108 +341,19 @@
 
 <!-- FILE MANAGEMENT -->
 <div id="fileModal" class="modal">
-  <div class="modal-content modal-wide modal-full">
+  <div class="modal-content">
     <span class="close" onclick="closeModal('fileModal')">&times;</span>
     <h3>File Management</h3>
 
-    <div class="filem-layout">
-      <!-- Left: folders (icons) -->
-      <div class="filem-list">
-        <div class="filem-toolbar">
-          <input id="fileFolderSearch" type="text" placeholder="Search folders..." onkeyup="filterFileFolders()">
-          <div class="hint small" style="margin:8px 0 0;">
-            Select a folder on the left, then upload a file on the right.
-          </div>
-        </div>
+    <form method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
+      <label class="label">Select Folder</label>
+      <select name="folder_id" required>
+        <%- renderFolderOptions('root', 0) %>
+      </select>
 
-        <div class="filem-folders filem-grid" id="fileFoldersContainer">
-          <% 
-            // Reuse the same tiles renderer; for file upload we show ALL folders available to this user.
-            // NOTE: "folders" is already filtered by backend for non-admin users.
-            const fileFoldersRaw = (folders || []).map(f => ({
-              ...f,
-              parent_id: (f.parent_id === null || typeof f.parent_id === 'undefined') ? null : Number(f.parent_id)
-            }));
-            const __fileFolderIdSet = new Set(fileFoldersRaw.map(f => String(f.id)));
-            const fileFolders = fileFoldersRaw.map(f => ({
-              ...f,
-              parent_id: (f.parent_id !== null && !__fileFolderIdSet.has(String(f.parent_id))) ? null : f.parent_id
-            }));
-
-
-            const fileChildren = new Map();
-            fileFolders.forEach(f => {
-              const pid = f.parent_id === null ? 'root' : String(f.parent_id);
-              if (!fileChildren.has(pid)) fileChildren.set(pid, []);
-              fileChildren.get(pid).push(f);
-            });
-            (fileChildren.get('root') || []).sort(sortByName);
-            fileChildren.forEach(arr => arr.sort(sortByName));
-
-            function renderFileFolderTiles(parentKey, depth) {
-              const kids = fileChildren.get(parentKey) || [];
-              let out = '';
-              kids.forEach(child => {
-                const childId = String(child.id);
-                const hasChildren = (fileChildren.get(childId) || []).length > 0;
-                out += `
-                  <div class="fm-node" data-nodeid="${childId}" data-depth="${depth}">
-                    <button
-                      type="button"
-                      class="fm-tile filem-tile"
-                      data-folderid="${childId}"
-                      data-foldername="${esc(child.name)}"
-                      data-haschildren="${hasChildren ? '1' : '0'}"
-                      onclick="onFileFolderTileClick(event, this)">
-                      <div class="fm-icon" aria-hidden="true"></div>
-                      <div class="fm-tile-name">${esc(child.name)}</div>
-                      ${hasChildren ? `<div class="fm-toggle" title="Expand/Collapse" aria-label="Expand/Collapse"></div>` : ``}
-                    </button>
-
-                    ${hasChildren ? `
-                      <div class="fm-children" data-parent="${childId}" style="display:none;">
-                        ${renderFileFolderTiles(childId, depth + 1)}
-                      </div>
-                    ` : ``}
-                  </div>
-                `;
-              });
-              return out;
-            }
-          %>
-
-          <%- renderFileFolderTiles('root', 0) %>
-        </div>
-      </div>
-
-      <!-- Right: upload -->
-      <div class="filem-upload">
-        <div class="sub-card">
-          <h4>Upload File</h4>
-
-          <div class="filem-selected">
-            <label class="label">Selected Folder</label>
-            <input id="filemFolderName" type="text" disabled placeholder="No folder selected">
-            <input id="filemFolderId" type="hidden" name="folder_id" form="fileUploadForm" value="">
-          </div>
-
-          <form id="fileUploadForm" method="POST" action="/upload" enctype="multipart/form-data" style="margin-top: 12px;">
-            <!-- Fallback select (hidden) -->
-            <select id="filemFolderSelect" name="folder_id" required style="display:none;">
-              <%- renderFolderOptions('root', 0) %>
-            </select>
-
-            <input type="file" name="documents" multiple required>
-            <button id="filemUploadBtn" class="action-btn red" type="submit" disabled>Upload File</button>
-
-            <p class="hint small" style="margin-top:10px;">
-              Tip: If you can’t see a folder here, ask Admin to assign it to your account.
-            </p>
-          </form>
-        </div>
-      </div>
-    </div>
-
+      <input type="file" name="documents" multiple required>
+      <button class="action-btn red" type="submit">Upload File</button>
+    </form>
   </div>
 </div>
 
@@ -565,10 +438,17 @@
             </div>
 
           <% } else { %>
-            <p class="hint">Only Admin can create, rename or delete folders. You can still open folders.</p>
+            <div class="fm-selected">
+              <label class="label">Selected Folder</label>
+              <input id="fmFolderName" type="text" disabled placeholder="No folder selected">
+              <input id="fmFolderId" type="hidden" value="">
+            </div>
+
             <div style="margin-top:10px;">
               <a id="fmOpenLink" class="back-link" href="#" style="display:none;">Open Folder</a>
             </div>
+
+            <p class="hint" style="margin-top:10px;">You can open folders assigned to you to view files.</p>
           <% } %>
         </div>
       </div>
@@ -637,21 +517,16 @@ function showToast(message, type = "success") {
   const success = params.get("success");
   const error = params.get("error");
   const info = params.get("info");
-  const open = params.get("open");
 
   if (success) showToast(success, "success");
   if (error) showToast(error, "error");
   if (info) showToast(info, "info");
 
-  // Keep requested modal open after redirects (e.g. /dashboard?open=userModal)
-  if (open) {
-    try { openModal(open); } catch (e) {}
-  }
-
-  if (success || error || info || open) {
+  if (success || error || info) {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 })();
+
 /* ================= Print helper ================= */
 function printFile(url) {
   const iframe = document.createElement('iframe');
@@ -752,113 +627,34 @@ function deleteSelectedUser() {
   f.submit();
 }
 
-
-/* ================= File Management (2 columns + Folder Icons) ================= */
-let selectedUploadFolderId = null;
-
-function onFileFolderTileClick(e, tile) {
-  const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
-  const folderId = tile.dataset.folderid;
-
-  if (toggleClicked) {
-    toggleFileFolderChildren(folderId);
-    return;
-  }
-
-  selectFileFolderTile(tile);
-}
-
-function selectFileFolderTile(tile) {
-  document.querySelectorAll('#fileFoldersContainer .fm-tile').forEach(b => b.classList.remove('active'));
-  tile.classList.add('active');
-
-  selectedUploadFolderId = tile.dataset.folderid;
-  const folderName = tile.dataset.foldername || '';
-
-  const nameEl = document.getElementById('filemFolderName');
-  const idEl = document.getElementById('filemFolderId');
-  const selEl = document.getElementById('filemFolderSelect');
-  const uploadBtn = document.getElementById('filemUploadBtn');
-
-  if (nameEl) nameEl.value = folderName;
-  if (idEl) idEl.value = selectedUploadFolderId;
-
-  if (selEl) selEl.value = String(selectedUploadFolderId);
-  if (uploadBtn) uploadBtn.disabled = false;
-}
-
-function toggleFileFolderChildren(folderId) {
-  const box = document.querySelector(`#fileFoldersContainer .fm-children[data-parent="${folderId}"]`);
-  if (!box) return;
-
-  const isOpen = box.style.display !== 'none';
-  box.style.display = isOpen ? 'none' : 'grid';
-
-  const node = document.querySelector(`#fileFoldersContainer .fm-node[data-nodeid="${folderId}"]`);
-  if (node) node.classList.toggle('open', !isOpen);
-}
-
-function filterFileFolders() {
-  const q = (document.getElementById('fileFolderSearch').value || '').toLowerCase().trim();
-  const nodes = Array.from(document.querySelectorAll('#fileFoldersContainer .fm-node'));
-
-  if (!q) {
-    nodes.forEach(n => n.style.display = '');
-    document.querySelectorAll('#fileFoldersContainer .fm-children').forEach(c => c.style.display = 'none');
-    document.querySelectorAll('#fileFoldersContainer .fm-node').forEach(n => n.classList.remove('open'));
-    return;
-  }
-
-  const tiles = Array.from(document.querySelectorAll('#fileFoldersContainer .fm-tile'));
-  const matchedIds = new Set();
-
-  tiles.forEach(t => {
-    const name = (t.dataset.foldername || '').toLowerCase();
-    if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
-  });
-
-  function showAncestors(nodeEl) {
-    let p = nodeEl.parentElement;
-    while (p) {
-      if (p.classList && p.classList.contains('fm-children')) {
-        p.style.display = 'grid';
-        const pid = p.getAttribute('data-parent');
-        const parentNode = document.querySelector(`#fileFoldersContainer .fm-node[data-nodeid="${pid}"]`);
-        if (parentNode) parentNode.classList.add('open');
-      }
-      p = p.parentElement;
-    }
-  }
-
-  nodes.forEach(n => {
-    const tile = n.querySelector('.fm-tile');
-    const id = tile ? String(tile.dataset.folderid) : '';
-    const show = matchedIds.has(id);
-    n.style.display = show ? '' : 'none';
-    if (show) showAncestors(n);
-  });
-}
-
-
 /* ================= Folder Management (ICON GRID + COLLAPSE) ================= */
 let selectedFolderId = null;
 
-function onFolderTileClick(e, tile) {
-  // If user clicked the toggle arrow, expand/collapse ONLY
-  const toggleClicked = e && e.target && e.target.classList && e.target.classList.contains('fm-toggle');
-  const folderId = tile.dataset.folderid;
+// NOTE: There are TWO folder trees on this page (File Management + Folder Management).
+// Always scope DOM queries to #folderModal, otherwise you end up toggling the wrong tree.
+function toggleFolderFromToggle(e, toggleEl) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  const node = toggleEl && toggleEl.closest ? toggleEl.closest('#folderModal .fm-node') : null;
+  const folderId = node ? (node.getAttribute('data-nodeid') || '') : '';
+  if (folderId) toggleFolderChildren(folderId, node);
+}
 
-  if (toggleClicked) {
-    toggleFolderChildren(folderId);
-    return;
+// Allow Enter/Space on the toggle control
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (!t || !t.classList || !t.classList.contains('fm-toggle')) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    toggleFolderFromToggle(e, t);
   }
+});
 
-  // Otherwise select folder
+function onFolderTileClick(e, tile) {
+  // Clicking the folder tile selects it; expand/collapse is handled by the toggle element.
   selectFolderTile(tile);
 }
 
 function selectFolderTile(tile) {
-  document.querySelectorAll('.fm-tile').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#folderModal .fm-tile').forEach(b => b.classList.remove('active'));
   tile.classList.add('active');
 
   selectedFolderId = tile.dataset.folderid;
@@ -887,50 +683,46 @@ function selectFolderTile(tile) {
     openLink.href = `/files/folder/${selectedFolderId}`;
   }
 
-  if (hint) hint.innerText = `Selected: ${folderName} (ID: ${selectedFolderId})`;
+  if (hint) hint.innerText = `Selected: ${folderName}`;
 }
 
-function toggleFolderChildren(folderId) {
-  const box = document.querySelector(`.fm-children[data-parent="${folderId}"]`);
+function toggleFolderChildren(folderId, nodeEl) {
+  const node = nodeEl || document.querySelector(`#folderModal .fm-node[data-nodeid="${CSS.escape(String(folderId))}"]`);
+  if (!node) return;
+
+  const box = node.querySelector(`.fm-children[data-parent="${CSS.escape(String(folderId))}"]`);
   if (!box) return;
 
   const isOpen = box.style.display !== 'none';
   box.style.display = isOpen ? 'none' : 'grid';
-
-  // Toggle arrow state
-  const node = document.querySelector(`.fm-node[data-nodeid="${folderId}"]`);
-  if (node) node.classList.toggle('open', !isOpen);
+  node.classList.toggle('open', !isOpen);
 }
 
 function filterFolders() {
   const q = (document.getElementById('folderSearch').value || '').toLowerCase().trim();
-  const nodes = Array.from(document.querySelectorAll('.fm-node'));
+  const nodes = Array.from(document.querySelectorAll('#folderModal .fm-node'));
 
   if (!q) {
-    // reset: show roots, hide all children containers
     nodes.forEach(n => n.style.display = '');
-    document.querySelectorAll('.fm-children').forEach(c => c.style.display = 'none');
-    document.querySelectorAll('.fm-node').forEach(n => n.classList.remove('open'));
+    document.querySelectorAll('#folderModal .fm-children').forEach(c => c.style.display = 'none');
+    document.querySelectorAll('#folderModal .fm-node').forEach(n => n.classList.remove('open'));
     return;
   }
 
-  // basic filter: show nodes whose name matches; also show their ancestors
-  const tiles = Array.from(document.querySelectorAll('.fm-tile'));
+  const tiles = Array.from(document.querySelectorAll('#folderModal .fm-tile'));
   const matchedIds = new Set();
-
   tiles.forEach(t => {
     const name = (t.dataset.foldername || '').toLowerCase();
     if (name.includes(q)) matchedIds.add(String(t.dataset.folderid));
   });
 
-  // helper: walk up by DOM parents
   function showAncestors(nodeEl) {
     let p = nodeEl.parentElement;
     while (p) {
       if (p.classList && p.classList.contains('fm-children')) {
         p.style.display = 'grid';
         const pid = p.getAttribute('data-parent');
-        const parentNode = document.querySelector(`.fm-node[data-nodeid="${pid}"]`);
+        const parentNode = document.querySelector(`#folderModal .fm-node[data-nodeid="${CSS.escape(String(pid))}"]`);
         if (parentNode) parentNode.classList.add('open');
       }
       p = p.parentElement;
