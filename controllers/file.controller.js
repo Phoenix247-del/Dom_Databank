@@ -129,16 +129,28 @@ function loadLogs(cb) {
 /* ================= UPLOAD FILE ================= */
 exports.uploadFile = async (req, res) => {
   const user = req.session.user;
-  const folder_id = Number(req.body.folder_id);
+  // folder_id can arrive as a string OR an array (e.g., when multiple inputs share the same name)
+  let folderRaw = req.body.folder_id;
+  if (Array.isArray(folderRaw)) {
+    // pick the last non-empty value
+    folderRaw = [...folderRaw].reverse().find(v => String(v || '').trim() !== '') || '';
+  }
+  const folder_id = Number(String(folderRaw || '').trim());
 
-  // Support multiple uploads (documents) + backward compatible single upload (document)
-  const uploaded = [];
-  if (req.files && Array.isArray(req.files.documents)) uploaded.push(...req.files.documents);
-  if (req.files && Array.isArray(req.files.document)) uploaded.push(...req.files.document);
-  if (!uploaded.length && req.file) uploaded.push(req.file);
+  // Multer array() => req.files; Multer single() => req.file
+  const files = Array.isArray(req.files) && req.files.length
+    ? req.files
+    : (req.file ? [req.file] : []);
 
-  if (!uploaded.length) return res.status(400).send('No file uploaded');
-  if (!folder_id) return res.status(400).send('Folder is required');
+  // Redirects keep the File modal open and preserve the selected folder
+  // so users can keep uploading without re-selecting.
+  const redirectBack = (type, msg) => {
+    const qs = `open=fileModal&folder_id=${encodeURIComponent(String(folder_id || ''))}`;
+    return res.redirect(`/dashboard?${qs}&${type}=${encodeURIComponent(msg)}`);
+  };
+
+  if (!files.length) return redirectBack('error', 'No file selected.');
+  if (!Number.isFinite(folder_id) || folder_id <= 0) return redirectBack('error', 'Please select a folder before uploading.');
 
   // ✅ ENFORCE: user can only upload to assigned folders
   if (user.role !== 'admin') {
@@ -146,30 +158,28 @@ exports.uploadFile = async (req, res) => {
     if (!ok) return res.status(403).send('You are not allowed to upload to this folder');
   }
 
-  // Insert each uploaded file row
-  let pending = uploaded.length;
-  let failed = false;
+  // Insert each file
+  const insertOne = (f) => {
+    const publicPath = buildPublicFilePath(f);
+    return new Promise((resolve, reject) => {
+      db.query(
+        'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
+        [folder_id, f.originalname, publicPath, user.id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+  };
 
-  uploaded.forEach((file) => {
-    const publicPath = buildPublicFilePath(file);
-    db.query(
-      'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
-      [folder_id, file.originalname, publicPath, user.id],
-      (err) => {
-        if (failed) return;
-        if (err) {
-          failed = true;
-          console.error('File upload error:', err);
-          return res.status(500).send('File upload failed');
-        }
-        pending -= 1;
-        if (pending <= 0) {
-          // Re-open file modal and keep the selected folder
-          return res.redirect(`/dashboard?success=${encodeURIComponent('File(s) uploaded successfully.')}&open=fileModal&folder_id=${encodeURIComponent(String(folder_id))}`);
-        }
-      }
-    );
-  });
+  try {
+    for (const f of files) {
+      await insertOne(f);
+    }
+    const msg = files.length > 1 ? `${files.length} files uploaded successfully.` : 'File uploaded successfully.';
+    return redirectBack('success', msg);
+  } catch (err) {
+    console.error('File upload error:', err);
+    return redirectBack('error', 'File upload failed. Please try again.');
+  }
 };
 
 /* ================= SEARCH FILES ================= */

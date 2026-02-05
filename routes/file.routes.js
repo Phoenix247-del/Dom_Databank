@@ -30,12 +30,8 @@ const upload = multer({ storage });
 router.post(
   '/upload',
   isAuthenticated,
-  // Support multiple uploads (documents[]) and keep backward-compat for single (document)
-  upload.fields([
-    { name: 'documents', maxCount: 25 },
-    { name: 'document', maxCount: 1 }
-  ]),
-  logger('Uploaded file(s)'),
+  logger('Uploaded a file'),
+  upload.array('document', 20),
   controller.uploadFile
 );
 
