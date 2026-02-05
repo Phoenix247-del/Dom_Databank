@@ -128,43 +128,48 @@ function loadLogs(cb) {
 
 /* ================= UPLOAD FILE ================= */
 exports.uploadFile = async (req, res) => {
-  const user = req.session.user;
-  // folder_id can arrive as a string OR an array (e.g., when multiple inputs share the same name)
-  let folderRaw = req.body.folder_id;
-  if (Array.isArray(folderRaw)) {
-    // pick the last non-empty value
-    folderRaw = [...folderRaw].reverse().find(v => String(v || '').trim() !== '') || '';
-  }
-  const folder_id = Number(String(folderRaw || '').trim());
-  const file = req.file;
+  try {
+    // Support BOTH single and multiple uploads
+    const uploaded = Array.isArray(req.files) && req.files.length
+      ? req.files
+      : (req.file ? [req.file] : []);
 
-  if (!file) return res.status(400).send('No file uploaded');
-  if (!Number.isFinite(folder_id) || folder_id <= 0) return res.status(400).send('Folder is required');
+    const folderId = req.body.folder_id;
 
-  // ✅ ENFORCE: user can only upload to assigned folders
-  if (user.role !== 'admin') {
-    const ok = await userHasFolderAccess(user.id, folder_id);
-    if (!ok) return res.status(403).send('You are not allowed to upload to this folder');
-  }
-
-  const publicPath = buildPublicFilePath(file);
-
-  db.query(
-    'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
-    [folder_id, file.originalname, publicPath, user.id],
-    (err) => {
-      if (err) {
-        console.error('File upload error:', err);
-        return res.status(500).send('File upload failed');
-      }
-      // Keep File Management modal open and preserve selected folder after upload
-      // so users can upload multiple files without re-selecting the folder.
-      const glue = '?';
-      const qs = `open=fileModal&folder_id=${encodeURIComponent(String(folder_id))}`;
-      return res.redirect(`/dashboard${glue}${qs}&success=${encodeURIComponent('File uploaded successfully.')}`);
+    if (!folderId) {
+      // If files were uploaded but folder is missing, this is a client-side issue
+      return res.redirect('/dashboard?error=' + encodeURIComponent('Please select a folder.') + '&open=fileModal');
     }
-  );
+
+    if (!uploaded.length) {
+      return res.redirect('/dashboard?error=' + encodeURIComponent('No file selected.') + '&open=fileModal&folder_id=' + encodeURIComponent(folderId));
+    }
+
+    const fileInserts = uploaded.map(f => ({
+      filename: f.originalname,
+      filepath: f.path,
+      folder_id: folderId
+    }));
+
+    for (const row of fileInserts) {
+      await new Promise((resolve, reject) => {
+        db.query(
+          'INSERT INTO files (filename, filepath, folder_id) VALUES (?, ?, ?)',
+          [row.filename, row.filepath, row.folder_id],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+    }
+
+    // Stay in File modal + keep folder selected
+    const msg = uploaded.length === 1 ? 'File uploaded successfully!' : `${uploaded.length} files uploaded successfully!`;
+    return res.redirect('/dashboard?success=' + encodeURIComponent(msg) + '&open=fileModal&folder_id=' + encodeURIComponent(folderId));
+  } catch (err) {
+    console.error('Upload error:', err);
+    return res.status(500).send('Internal Server Error');
+  }
 };
+
 
 /* ================= SEARCH FILES ================= */
 exports.searchFiles = (req, res) => {
@@ -219,56 +224,87 @@ exports.searchFiles = (req, res) => {
 
 /* ================= LIST FILES BY FOLDER ================= */
 exports.listFilesByFolder = async (req, res) => {
-  const user = req.session.user;
-  const folderId = Number(req.params.folderId);
+  try {
+    const folderId = req.params.folderId;
+    const user = req.session.user;
 
-  if (!folderId) return res.status(400).send('Invalid folder');
+    // Pagination
+    const perPage = 10;
+    const page = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
+    const offset = (page - 1) * perPage;
 
-  // ✅ ENFORCE: users can only open folders they are assigned to
-  if (user.role !== 'admin') {
-    const ok = await userHasFolderAccess(user.id, folderId);
-    if (!ok) return res.status(403).send('You are not assigned to this folder');
-  }
+    // Confirm folder exists (and get name)
+    const folder = await new Promise((resolve, reject) => {
+      db.query('SELECT id, name FROM folders WHERE id = ?', [folderId], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows && rows.length ? rows[0] : null);
+      });
+    });
+    if (!folder) return res.status(404).send('Folder not found');
 
-  loadFilesForUser(user, { folderId }, (err, files) => {
-    if (err) {
-      console.error('Folder files error:', err);
-      return res.status(500).send('Could not load folder files');
+    // Access check (non-admin must be assigned)
+    if (user.role !== 'admin') {
+      const hasAccess = await new Promise((resolve, reject) => {
+        db.query(
+          'SELECT 1 FROM user_folder_access WHERE user_id = ? AND folder_id = ? LIMIT 1',
+          [user.id, folderId],
+          (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows && rows.length > 0);
+          }
+        );
+      });
+      if (!hasAccess) return res.status(403).send('Access denied');
     }
 
-    files = (files || []).map(f => ({ ...f, filepath: normalizeDbPath(f.filepath) }));
-
-    loadFoldersForUser(user, (err2, folders) => {
-      if (err2) {
-        console.error('Folders load error:', err2);
-        return res.status(500).send('Could not load folders');
-      }
-
-      const selectedFolder = (folders || []).find(f => String(f.id) === String(folderId));
-      const selectedFolderName = selectedFolder ? selectedFolder.name : 'Selected Folder';
-
-      if (user.role === 'admin') {
-        loadLogs((err3, logs) => {
-          if (err3) logs = [];
-          return res.render('dashboard', {
-            user,
-            files,
-            folders,
-            logs,
-            selectedFolderId: folderId,
-            selectedFolderName
-          });
-        });
-      } else {
-        return res.render('dashboard', {
-          user,
-          files,
-          folders,
-          logs: [],
-          selectedFolderId: folderId,
-          selectedFolderName
-        });
-      }
+    // Count files in folder
+    const total = await new Promise((resolve, reject) => {
+      db.query('SELECT COUNT(*) AS cnt FROM files WHERE folder_id = ?', [folderId], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows?.[0]?.cnt || 0);
+      });
     });
-  });
+    const totalPages = Math.max(Math.ceil(total / perPage), 1);
+
+    // Fetch paginated files
+    const files = await new Promise((resolve, reject) => {
+      db.query(
+        'SELECT * FROM files WHERE folder_id = ? ORDER BY uploaded_at DESC LIMIT ? OFFSET ?',
+        [folderId, perPage, offset],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+
+    // Folders list for sidebar/modals
+    const folders = await new Promise((resolve, reject) => {
+      const q = (user.role === 'admin')
+        ? 'SELECT * FROM folders ORDER BY name ASC'
+        : `SELECT f.* 
+           FROM folders f 
+           INNER JOIN user_folder_access ufa ON ufa.folder_id = f.id 
+           WHERE ufa.user_id = ?
+           ORDER BY f.name ASC`;
+
+      const params = (user.role === 'admin') ? [] : [user.id];
+      db.query(q, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+    });
+
+    return res.render('dashboard', {
+      user,
+      files,
+      folders,
+      selectedFolderId: folderId,
+      selectedFolderName: folder.name,
+      logs: [],
+      users: [],
+      accessRows: [],
+      page,
+      totalPages,
+      paginationBase: `/files/folder/${folderId}`
+    });
+  } catch (err) {
+    console.error('Error listing folder files:', err);
+    return res.status(500).send('Internal Server Error');
+  }
 };
+

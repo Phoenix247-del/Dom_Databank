@@ -31,7 +31,7 @@ router.post(
   '/upload',
   isAuthenticated,
   logger('Uploaded a file'),
-  upload.single('document'),
+  upload.array('documents', 20),
   controller.uploadFile
 );
 
