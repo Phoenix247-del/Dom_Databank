@@ -17,22 +17,14 @@ function normalizeDbPath(fp) {
   if (!fp) return '';
   const p = String(fp).replace(/\\/g, '/');
 
-  // If stored as absolute volume path like /data/uploads/documents/xxx
   const idx = p.indexOf('/uploads/');
-  if (idx !== -1) {
-    return p.slice(idx + 1); // remove leading slash so it becomes uploads/...
-  }
+  if (idx !== -1) return p.slice(idx + 1);
 
-  // If mistakenly stored as data/uploads/...
   const idx2 = p.indexOf('uploads/');
-  if (idx2 !== -1) {
-    return p.slice(idx2); // uploads/...
-  }
+  if (idx2 !== -1) return p.slice(idx2);
 
-  // If stored as documents/xxx
   if (p.startsWith('documents/')) return `uploads/${p}`;
 
-  // Fix legacy bug: uploadsdocuments -> uploads/documents
   return p.replace('uploadsdocuments', 'uploads/documents');
 }
 
@@ -126,19 +118,23 @@ function loadLogs(cb) {
   db.query(logsSql, cb);
 }
 
-/* ================= UPLOAD FILE ================= */
+/* ================= UPLOAD FILE(S) ================= */
 exports.uploadFile = async (req, res) => {
   const user = req.session.user;
-  // folder_id can arrive as a string OR an array (e.g., when multiple inputs share the same name)
+
+  // folder_id can arrive as a string OR an array
   let folderRaw = req.body.folder_id;
   if (Array.isArray(folderRaw)) {
-    // pick the last non-empty value
     folderRaw = [...folderRaw].reverse().find(v => String(v || '').trim() !== '') || '';
   }
   const folder_id = Number(String(folderRaw || '').trim());
-  const file = req.file;
 
-  if (!file) return res.status(400).send('No file uploaded');
+  // ✅ Support both single + multiple upload
+  const files = (req.files && req.files.length)
+    ? req.files
+    : (req.file ? [req.file] : []);
+
+  if (!files.length) return res.status(400).send('No file uploaded');
   if (!Number.isFinite(folder_id) || folder_id <= 0) return res.status(400).send('Folder is required');
 
   // ✅ ENFORCE: user can only upload to assigned folders
@@ -147,23 +143,41 @@ exports.uploadFile = async (req, res) => {
     if (!ok) return res.status(403).send('You are not allowed to upload to this folder');
   }
 
-  const publicPath = buildPublicFilePath(file);
+  let successCount = 0;
+  let failCount = 0;
 
-  db.query(
-    'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
-    [folder_id, file.originalname, publicPath, user.id],
-    (err) => {
-      if (err) {
-        console.error('File upload error:', err);
-        return res.status(500).send('File upload failed');
-      }
-      // Keep File Management modal open and preserve selected folder after upload
-      // so users can upload multiple files without re-selecting the folder.
-      const glue = '?';
-      const qs = `open=fileModal&folder_id=${encodeURIComponent(String(folder_id))}`;
-      return res.redirect(`/dashboard${glue}${qs}&success=${encodeURIComponent('File uploaded successfully.')}`);
-    }
-  );
+  // Insert sequentially (safe, predictable)
+  for (const f of files) {
+    const publicPath = buildPublicFilePath(f);
+
+    // eslint-disable-next-line no-await-in-loop
+    const ok = await new Promise((resolve) => {
+      db.query(
+        'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
+        [folder_id, f.originalname, publicPath, user.id],
+        (err) => {
+          if (err) {
+            console.error('File upload insert error:', err);
+            return resolve(false);
+          }
+          resolve(true);
+        }
+      );
+    });
+
+    if (ok) successCount += 1;
+    else failCount += 1;
+  }
+
+  const glue = '?';
+  const qs = `open=fileModal&folder_id=${encodeURIComponent(String(folder_id))}`;
+
+  const msg =
+    failCount === 0
+      ? `${successCount} file(s) uploaded successfully.`
+      : `${successCount} uploaded, ${failCount} failed.`;
+
+  return res.redirect(`/dashboard${glue}${qs}&success=${encodeURIComponent(msg)}`);
 };
 
 /* ================= SEARCH FILES ================= */
@@ -172,7 +186,6 @@ exports.searchFiles = (req, res) => {
   const keyword = (req.query.keyword || '').trim();
   const date = (req.query.date || '').trim();
 
-  // privilege check (server-side)
   if (user.role !== 'admin' && !Number(user.can_search)) {
     return res.status(403).send('You do not have search privilege');
   }
@@ -224,7 +237,6 @@ exports.listFilesByFolder = async (req, res) => {
 
   if (!folderId) return res.status(400).send('Invalid folder');
 
-  // ✅ ENFORCE: users can only open folders they are assigned to
   if (user.role !== 'admin') {
     const ok = await userHasFolderAccess(user.id, folderId);
     if (!ok) return res.status(403).send('You are not assigned to this folder');
