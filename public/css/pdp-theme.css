@@ -798,3 +798,40 @@ footer {
   .home-title { font-size: 18px; }
   .home-subtitle { font-size: 15px; }
 }
+
+
+/* ================= Dashboard Pagination ================= */
+.pagination{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  margin-top:14px;
+  padding-top:10px;
+  border-top:1px solid rgba(0,0,0,0.08);
+}
+.page-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 14px;
+  border-radius:10px;
+  text-decoration:none;
+  font-weight:700;
+  border:1px solid rgba(0,0,0,0.14);
+  background:#fff;
+  color:#111;
+  transition:transform .05s ease, box-shadow .12s ease;
+}
+.page-btn:hover{
+  box-shadow:0 6px 18px rgba(0,0,0,0.08);
+  transform:translateY(-1px);
+}
+.page-btn.disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+.page-info{
+  font-weight:700;
+  color:#111;
+}

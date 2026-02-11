@@ -16,6 +16,8 @@
   const safeUsers = (typeof users !== 'undefined' && users) ? users : [];
   const safeAccessRows = (typeof accessRows !== 'undefined' && accessRows) ? accessRows : [];
   const safeSelectedFolderName = (typeof selectedFolderName !== 'undefined' && selectedFolderName) ? selectedFolderName : null;
+  const safePage = (typeof page !== 'undefined' && page) ? Number(page) : 1;
+  const safeTotalPages = (typeof totalPages !== 'undefined' && totalPages) ? Number(totalPages) : 1;
 
   const isAdmin = user.role === 'admin';
 
@@ -204,6 +206,22 @@
           </tr>
           <% }) %>
         </table>
+        <div class="pagination">
+          <% if (safePage > 1) { %>
+            <a class="page-btn" href="/dashboard?page=<%= safePage - 1 %>">Previous</a>
+          <% } else { %>
+            <span class="page-btn disabled">Previous</span>
+          <% } %>
+
+          <span class="page-info">Page <%= safePage %> of <%= safeTotalPages %></span>
+
+          <% if (safePage < safeTotalPages) { %>
+            <a class="page-btn" href="/dashboard?page=<%= safePage + 1 %>">Next</a>
+          <% } else { %>
+            <span class="page-btn disabled">Next</span>
+          <% } %>
+        </div>
+
 
         <% if (!isAdmin) { %>
           <p class="hint small" style="margin-top:10px;">
