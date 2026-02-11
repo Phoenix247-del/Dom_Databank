@@ -22,158 +22,211 @@ function redirectWithMessage(req, res, type, message, fallback) {
 
 /**
  * DASHBOARD:
- * - Admin: sees all files/folders + logs + users + user_folder_access
- * - User: sees only assigned folders/files (no users list, no logs)
+ * - Admin: sees all files/folders + logs + users + accessRows (if table exists)
+ * - User: sees only assigned folders/files IF access table exists; otherwise safe fallback shows all
  */
 router.get('/dashboard', isAuthenticated, (req, res) => {
-  const isAdmin = req.session.user.role === 'admin';
+  const user = req.session.user;
 
-  // Pagination (Recent Files)
-  const pageSize = 10;
-  const page = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
-  const offset = (page - 1) * pageSize;
+  // Pagination for Recent Files
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = 10;
+  const offset = (page - 1) * limit;
 
-  // Fetch folders (needed for folder modals / assignment)
-  const foldersSql = `SELECT * FROM folders ORDER BY created_at DESC`;
+  // Some deployments may not have an access-mapping table yet.
+  // If the table is missing, we fall back to showing ALL folders/files (so the dashboard never crashes).
+  function isMissingTable(err) {
+    return err && (err.code === 'ER_NO_SUCH_TABLE' || err.errno === 1146);
+  }
 
-  // NOTE: We always paginate the recent files table
-  const filesSqlAdmin = `
-    SELECT id, filename, filepath, uploaded_at, folder_id
-    FROM files
-    ORDER BY uploaded_at DESC
-    LIMIT ? OFFSET ?
-  `;
+  function loadAccessRowsForAdmin(cb) {
+    // Preferred table name (used by this codebase)
+    db.query('SELECT user_id, folder_id FROM user_folder_access', (err, rows) => {
+      if (!err) return cb(null, rows || []);
+      if (!isMissingTable(err)) return cb(err);
 
-  const countSqlAdmin = `SELECT COUNT(*) AS cnt FROM files`;
+      // Backward-compat fallback (older name)
+      db.query('SELECT user_id, folder_id FROM folder_access', (err2, rows2) => {
+        if (!err2) return cb(null, rows2 || []);
+        if (isMissingTable(err2)) return cb(null, []);
+        return cb(err2);
+      });
+    });
+  }
 
-  const filesSqlUser = `
-    SELECT f.id, f.filename, f.filepath, f.uploaded_at, f.folder_id
-    FROM files f
-    INNER JOIN folder_access fa ON f.folder_id = fa.folder_id
-    WHERE fa.user_id = ?
-    ORDER BY f.uploaded_at DESC
-    LIMIT ? OFFSET ?
-  `;
-
-  const countSqlUser = `
-    SELECT COUNT(*) AS cnt
-    FROM files f
-    INNER JOIN folder_access fa ON f.folder_id = fa.folder_id
-    WHERE fa.user_id = ?
-  `;
-
-  // Admin view: all users + access rows
-  const usersSql = `SELECT id, fullname, email, role, can_search, can_preview, can_print FROM users ORDER BY created_at DESC`;
-  const accessRowsSql = `SELECT user_id, folder_id FROM folder_access`;
-
-  // Logs (admin only)
-  const logsSql = `
-    SELECT l.*, u.fullname, u.email
-    FROM logs l
-    LEFT JOIN users u ON l.user_id = u.id
-    ORDER BY l.created_at DESC
-    LIMIT 200
-  `;
-
-  db.query(foldersSql, (errFolders, folders) => {
-    if (errFolders) {
-      console.error('Folders fetch error:', errFolders);
-      return res.status(500).send('Error loading dashboard');
+  function loadFolders(cb) {
+    if (user.role === 'admin') {
+      return db.query('SELECT * FROM folders ORDER BY name ASC', cb);
     }
 
-    if (isAdmin) {
-      // Admin: count -> files -> users -> access rows -> logs -> render
-      db.query(countSqlAdmin, (errCount, countRows) => {
-        if (errCount) {
-          console.error('Files count error:', errCount);
-          return res.status(500).send('Error loading dashboard');
+    const sql = `
+      SELECT f.*
+      FROM folders f
+      INNER JOIN user_folder_access ufa
+        ON ufa.folder_id = f.id
+      WHERE ufa.user_id = ?
+      ORDER BY f.name ASC
+    `;
+
+    db.query(sql, [user.id], (err, rows) => {
+      if (!err) return cb(null, rows);
+      if (isMissingTable(err)) {
+        // Fallback: show all folders (safe mode)
+        return db.query('SELECT * FROM folders ORDER BY name ASC', cb);
+      }
+      return cb(err);
+    });
+  }
+
+  function loadFiles(cb) {
+    const countAllSql = 'SELECT COUNT(*) AS total FROM files';
+    const listAllSql = 'SELECT * FROM files ORDER BY uploaded_at DESC LIMIT ? OFFSET ?';
+
+    if (user.role === 'admin') {
+      db.query(countAllSql, (cerr, crows) => {
+        if (cerr) return cb(cerr);
+        const total = Number(crows?.[0]?.total || 0);
+        const totalPages = Math.max(Math.ceil(total / limit), 1);
+        db.query(listAllSql, [limit, offset], (lerr, lrows) => {
+          if (lerr) return cb(lerr);
+          cb(null, { files: lrows || [], page, totalPages });
+        });
+      });
+      return;
+    }
+
+    const countSql = `
+      SELECT COUNT(*) AS total
+      FROM files fi
+      INNER JOIN user_folder_access ufa
+        ON ufa.folder_id = fi.folder_id
+       AND ufa.user_id = ?
+    `;
+
+    const listSql = `
+      SELECT fi.*
+      FROM files fi
+      INNER JOIN user_folder_access ufa
+        ON ufa.folder_id = fi.folder_id
+       AND ufa.user_id = ?
+      ORDER BY fi.uploaded_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    db.query(countSql, [user.id], (cerr, crows) => {
+      if (!cerr) {
+        const total = Number(crows?.[0]?.total || 0);
+        const totalPages = Math.max(Math.ceil(total / limit), 1);
+        return db.query(listSql, [user.id, limit, offset], (lerr, lrows) => {
+          if (lerr) return cb(lerr);
+          cb(null, { files: lrows || [], page, totalPages });
+        });
+      }
+
+      // If access table missing, fall back to ALL files (safe mode)
+      if (isMissingTable(cerr)) {
+        db.query(countAllSql, (cerr2, crows2) => {
+          if (cerr2) return cb(cerr2);
+          const total = Number(crows2?.[0]?.total || 0);
+          const totalPages = Math.max(Math.ceil(total / limit), 1);
+          db.query(listAllSql, [limit, offset], (lerr2, lrows2) => {
+            if (lerr2) return cb(lerr2);
+            cb(null, { files: lrows2 || [], page, totalPages });
+          });
+        });
+        return;
+      }
+
+      return cb(cerr);
+    });
+  }
+
+  // 1) Load folders (with safe fallback)
+  loadFolders((fErr, folders) => {
+    if (fErr) {
+      console.error('Folders load error:', fErr);
+      return res.status(500).send('Error loading folders');
+    }
+
+    // 2) Load paginated files (with safe fallback)
+    loadFiles((fiErr, fileResult) => {
+      if (fiErr) {
+        console.error('Files load error:', fiErr);
+        return res.status(500).send('Error loading files');
+      }
+
+      const files = fileResult.files;
+      const totalPages = fileResult.totalPages;
+
+      // Non-admin render
+      if (user.role !== 'admin') {
+        return res.render('dashboard', {
+          user,
+          files,
+          folders,
+          logs: [],
+          users: [],
+          accessRows: [],
+          selectedFolderId: null,
+          selectedFolderName: null,
+          page,
+          totalPages
+        });
+      }
+
+      // Admin extras: logs + users + assignments
+      const logsSql = `
+        SELECT 
+          al.id,
+          al.action,
+          al.created_at,
+          u.fullname,
+          u.email
+        FROM activity_logs al
+        LEFT JOIN users u ON u.id = al.user_id
+        ORDER BY al.created_at DESC
+        LIMIT 200
+      `;
+
+      db.query(logsSql, (err3, logs) => {
+        if (err3) {
+          console.error('Logs load error:', err3);
+          logs = [];
         }
 
-        const totalFiles = Number(countRows?.[0]?.cnt || 0);
-        const totalPages = Math.max(Math.ceil(totalFiles / pageSize), 1);
-
-        const safePage = Math.min(page, totalPages);
-        const safeOffset = (safePage - 1) * pageSize;
-
-        db.query(filesSqlAdmin, [pageSize, safeOffset], (errFiles, files) => {
-          if (errFiles) {
-            console.error('Files fetch error:', errFiles);
-            return res.status(500).send('Error loading dashboard');
-          }
-
-          db.query(usersSql, (errUsers, users) => {
-            if (errUsers) {
-              console.error('Users fetch error:', errUsers);
-              return res.status(500).send('Error loading dashboard');
+        db.query(
+          'SELECT id, fullname, email, role, can_search, can_preview, can_print, created_at FROM users ORDER BY created_at DESC',
+          (err4, users) => {
+            if (err4) {
+              console.error('Users load error:', err4);
+              users = [];
             }
 
-            db.query(accessRowsSql, (errAccess, accessRows) => {
-              if (errAccess) {
-                console.error('Access rows fetch error:', errAccess);
-                return res.status(500).send('Error loading dashboard');
+            loadAccessRowsForAdmin((err5, accessRows) => {
+              if (err5) {
+                console.error('Access rows load error:', err5);
+                accessRows = [];
               }
 
-              db.query(logsSql, (errLogs, logs) => {
-                if (errLogs) {
-                  console.error('Logs fetch error:', errLogs);
-                  return res.status(500).send('Error loading dashboard');
-                }
-
-                return res.render('dashboard', {
-                  user: req.session.user,
-                  files,
-                  folders,
-                  users,
-                  logs,
-                  accessRows,
-                  page: safePage,
-                  totalPages,
-                  totalFiles,
-                  pageSize
-                });
+              return res.render('dashboard', {
+                user,
+                files,
+                folders,
+                logs,
+                users,
+                accessRows,
+                selectedFolderId: null,
+                selectedFolderName: null,
+                page,
+                totalPages
               });
             });
-          });
-        });
-      });
-    } else {
-      // User: count -> files -> render (no users/logs)
-      db.query(countSqlUser, [req.session.user.id], (errCount, countRows) => {
-        if (errCount) {
-          console.error('User files count error:', errCount);
-          return res.status(500).send('Error loading dashboard');
-        }
-
-        const totalFiles = Number(countRows?.[0]?.cnt || 0);
-        const totalPages = Math.max(Math.ceil(totalFiles / pageSize), 1);
-
-        const safePage = Math.min(page, totalPages);
-        const safeOffset = (safePage - 1) * pageSize;
-
-        db.query(filesSqlUser, [req.session.user.id, pageSize, safeOffset], (errFiles, files) => {
-          if (errFiles) {
-            console.error('User files fetch error:', errFiles);
-            return res.status(500).send('Error loading dashboard');
           }
-
-          return res.render('dashboard', {
-            user: req.session.user,
-            files,
-            folders,
-            users: [],
-            logs: [],
-            accessRows: [],
-            page: safePage,
-            totalPages,
-            totalFiles,
-            pageSize
-          });
-        });
+        );
       });
-    }
+    });
   });
 });
-
 
 /* ================= ADMIN: CREATE USER ================= */
 router.post('/admin/create-user', isAuthenticated, isAdmin, async (req, res) => {
@@ -365,5 +418,3 @@ router.post('/admin/delete-file/:id', isAuthenticated, isAdmin, (req, res) => {
 });
 
 module.exports = router;
-
-
