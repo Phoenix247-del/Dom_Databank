@@ -28,27 +28,11 @@ function redirectWithMessage(req, res, type, message, fallback) {
 router.get('/dashboard', isAuthenticated, (req, res) => {
   const user = req.session.user;
 
-  const perPage = 10;
-  const page = Math.max(parseInt(req.query.page || '1', 10) || 1, 1);
-  const offset = (page - 1) * perPage;
-
-  // ===== Files (paginated) =====
-  let filesCountSql = 'SELECT COUNT(*) AS cnt FROM files';
-  let filesCountParams = [];
-
-  let filesSql = 'SELECT * FROM files ORDER BY uploaded_at DESC LIMIT ? OFFSET ?';
-  let filesParams = [perPage, offset];
+  // Files query
+  let filesSql = 'SELECT * FROM files ORDER BY uploaded_at DESC';
+  let filesParams = [];
 
   if (user.role !== 'admin') {
-    filesCountSql = `
-      SELECT COUNT(*) AS cnt
-      FROM files fi
-      INNER JOIN user_folder_access ufa
-        ON ufa.folder_id = fi.folder_id
-       AND ufa.user_id = ?
-    `;
-    filesCountParams = [user.id];
-
     filesSql = `
       SELECT fi.*
       FROM files fi
@@ -56,116 +40,99 @@ router.get('/dashboard', isAuthenticated, (req, res) => {
         ON ufa.folder_id = fi.folder_id
        AND ufa.user_id = ?
       ORDER BY fi.uploaded_at DESC
-      LIMIT ? OFFSET ?
     `;
-    filesParams = [user.id, perPage, offset];
+    filesParams = [user.id];
   }
 
-  db.query(filesCountSql, filesCountParams, (errCount, countRows) => {
-    if (errCount) {
-      console.error('Files count error:', errCount);
+  db.query(filesSql, filesParams, (err, files) => {
+    if (err) {
+      console.error('Files load error:', err);
       return res.status(500).send('Error loading files');
     }
 
-    const total = countRows?.[0]?.cnt || 0;
-    const totalPages = Math.max(Math.ceil(total / perPage), 1);
+    // Folders query
+    let foldersSql = 'SELECT * FROM folders ORDER BY created_at DESC';
+    let foldersParams = [];
 
-    db.query(filesSql, filesParams, (err, files) => {
-      if (err) {
-        console.error('Files load error:', err);
-        return res.status(500).send('Error loading files');
+    if (user.role !== 'admin') {
+      foldersSql = `
+        SELECT f.*
+        FROM folders f
+        INNER JOIN user_folder_access ufa
+          ON ufa.folder_id = f.id
+        WHERE ufa.user_id = ?
+        ORDER BY f.created_at DESC
+      `;
+      foldersParams = [user.id];
+    }
+
+    db.query(foldersSql, foldersParams, (err2, folders) => {
+      if (err2) {
+        console.error('Folders load error:', err2);
+        return res.status(500).send('Error loading folders');
       }
 
-      // ===== Folders =====
-      let foldersSql = 'SELECT * FROM folders ORDER BY name ASC';
-      let foldersParams = [];
-
+      // Non-admin render
       if (user.role !== 'admin') {
-        foldersSql = `
-          SELECT f.*
-          FROM folders f
-          INNER JOIN user_folder_access ufa
-            ON ufa.folder_id = f.id
-          WHERE ufa.user_id = ?
-          ORDER BY f.name ASC
-        `;
-        foldersParams = [user.id];
+        return res.render('dashboard', {
+          user,
+          files,
+          folders,
+          logs: [],
+          users: [],
+          accessRows: [],
+          selectedFolderId: null,
+          selectedFolderName: null
+        });
       }
 
-      db.query(foldersSql, foldersParams, (err2, folders) => {
-        if (err2) {
-          console.error('Folders load error:', err2);
-          return res.status(500).send('Error loading folders');
+      // Admin extras: logs + users + assignments
+      const logsSql = `
+        SELECT 
+          al.id,
+          al.action,
+          al.created_at,
+          u.fullname,
+          u.email
+        FROM activity_logs al
+        LEFT JOIN users u ON u.id = al.user_id
+        ORDER BY al.created_at DESC
+        LIMIT 200
+      `;
+
+      db.query(logsSql, (err3, logs) => {
+        if (err3) {
+          console.error('Logs load error:', err3);
+          logs = [];
         }
 
-        // Non-admin render
-        if (user.role !== 'admin') {
-          return res.render('dashboard', {
-            user,
-            files,
-            folders,
-            logs: [],
-            users: [],
-            accessRows: [],
-            selectedFolderId: null,
-            selectedFolderName: null,
-            page,
-            totalPages,
-            paginationBase: '/dashboard'
-          });
-        }
+        db.query(
+          'SELECT id, fullname, email, role, can_search, can_preview, can_print, created_at FROM users ORDER BY created_at DESC',
+          (err4, users) => {
+            if (err4) {
+              console.error('Users load error:', err4);
+              users = [];
+            }
 
-        // Admin extras: logs + users + assignments
-        const logsSql = `
-          SELECT 
-            al.id,
-            al.action,
-            al.created_at,
-            u.fullname,
-            u.email
-          FROM activity_logs al
-          LEFT JOIN users u ON u.id = al.user_id
-          ORDER BY al.created_at DESC
-          LIMIT 200
-        `;
-
-        db.query(logsSql, (err3, logs) => {
-          if (err3) {
-            console.error('Logs load error:', err3);
-            logs = [];
-          }
-
-          db.query(
-            'SELECT id, fullname, email, role, can_search, can_preview, can_print, created_at FROM users ORDER BY created_at DESC',
-            (err4, users) => {
-              if (err4) {
-                console.error('Users load error:', err4);
-                users = [];
+            db.query('SELECT user_id, folder_id FROM user_folder_access', (err5, accessRows) => {
+              if (err5) {
+                console.error('Access rows load error:', err5);
+                accessRows = [];
               }
 
-              db.query('SELECT user_id, folder_id FROM user_folder_access', (err5, accessRows) => {
-                if (err5) {
-                  console.error('Access rows load error:', err5);
-                  accessRows = [];
-                }
-
-                return res.render('dashboard', {
-                  user,
-                  files,
-                  folders,
-                  logs,
-                  users,
-                  accessRows,
-                  selectedFolderId: null,
-                  selectedFolderName: null,
-                  page,
-                  totalPages,
-                  paginationBase: '/dashboard'
-                });
+              return res.render('dashboard', {
+                user,
+                files,
+                folders,
+                logs,
+                users,
+                accessRows,
+                selectedFolderId: null,
+                selectedFolderName: null
               });
-            }
-          );
-        });
+            });
+          }
+        );
       });
     });
   });

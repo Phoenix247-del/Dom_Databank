@@ -54,7 +54,23 @@ app.set('views', path.join(__dirname, 'views'));
 /* ================= HEALTH + HOMEPAGE ================= */
 // ✅ Homepage (www.domdocuments.com)
 app.get('/', (req, res) => {
-  return res.render('home');
+  // Render homepage if the template exists; otherwise fall back to a static HTML file.
+  // This avoids "Failed to lookup view" crashes if the views directory is missing in a deployment.
+  try {
+    const fs = require('fs');
+    const viewPath = path.join(__dirname, 'views', 'home.ejs');
+    if (fs.existsSync(viewPath)) {
+      return res.render('home');
+    }
+    const fallback = path.join(__dirname, 'public', 'home.html');
+    if (fs.existsSync(fallback)) {
+      return res.sendFile(fallback);
+    }
+    return res.status(500).send('Homepage template not found.');
+  } catch (e) {
+    console.error('Homepage render error:', e);
+    return res.status(500).send('Homepage error.');
+  }
 });
 
 // ✅ Dedicated health endpoint

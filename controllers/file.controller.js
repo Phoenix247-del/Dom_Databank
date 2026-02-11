@@ -136,21 +136,10 @@ exports.uploadFile = async (req, res) => {
     folderRaw = [...folderRaw].reverse().find(v => String(v || '').trim() !== '') || '';
   }
   const folder_id = Number(String(folderRaw || '').trim());
+  const file = req.file;
 
-  // Multer array() => req.files; Multer single() => req.file
-  const files = Array.isArray(req.files) && req.files.length
-    ? req.files
-    : (req.file ? [req.file] : []);
-
-  // Redirects keep the File modal open and preserve the selected folder
-  // so users can keep uploading without re-selecting.
-  const redirectBack = (type, msg) => {
-    const qs = `open=fileModal&folder_id=${encodeURIComponent(String(folder_id || ''))}`;
-    return res.redirect(`/dashboard?${qs}&${type}=${encodeURIComponent(msg)}`);
-  };
-
-  if (!files.length) return redirectBack('error', 'No file selected.');
-  if (!Number.isFinite(folder_id) || folder_id <= 0) return redirectBack('error', 'Please select a folder before uploading.');
+  if (!file) return res.status(400).send('No file uploaded');
+  if (!Number.isFinite(folder_id) || folder_id <= 0) return res.status(400).send('Folder is required');
 
   // ✅ ENFORCE: user can only upload to assigned folders
   if (user.role !== 'admin') {
@@ -158,28 +147,23 @@ exports.uploadFile = async (req, res) => {
     if (!ok) return res.status(403).send('You are not allowed to upload to this folder');
   }
 
-  // Insert each file
-  const insertOne = (f) => {
-    const publicPath = buildPublicFilePath(f);
-    return new Promise((resolve, reject) => {
-      db.query(
-        'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
-        [folder_id, f.originalname, publicPath, user.id],
-        (err) => (err ? reject(err) : resolve())
-      );
-    });
-  };
+  const publicPath = buildPublicFilePath(file);
 
-  try {
-    for (const f of files) {
-      await insertOne(f);
+  db.query(
+    'INSERT INTO files (folder_id, filename, filepath, uploaded_by) VALUES (?, ?, ?, ?)',
+    [folder_id, file.originalname, publicPath, user.id],
+    (err) => {
+      if (err) {
+        console.error('File upload error:', err);
+        return res.status(500).send('File upload failed');
+      }
+      // Keep File Management modal open and preserve selected folder after upload
+      // so users can upload multiple files without re-selecting the folder.
+      const glue = '?';
+      const qs = `open=fileModal&folder_id=${encodeURIComponent(String(folder_id))}`;
+      return res.redirect(`/dashboard${glue}${qs}&success=${encodeURIComponent('File uploaded successfully.')}`);
     }
-    const msg = files.length > 1 ? `${files.length} files uploaded successfully.` : 'File uploaded successfully.';
-    return redirectBack('success', msg);
-  } catch (err) {
-    console.error('File upload error:', err);
-    return redirectBack('error', 'File upload failed. Please try again.');
-  }
+  );
 };
 
 /* ================= SEARCH FILES ================= */
