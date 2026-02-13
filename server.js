@@ -52,48 +52,25 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 /* ================= HEALTH + HOMEPAGE ================= */
-
 // ✅ Homepage (www.domdocuments.com)
-// IMPORTANT: Every time someone goes to homepage, force fresh login by destroying session first.
 app.get('/', (req, res) => {
-  const renderHome = () => {
-    try {
-      const fs = require('fs');
-      const viewPath = path.join(__dirname, 'views', 'home.ejs');
-      if (fs.existsSync(viewPath)) {
-        return res.render('home');
-      }
-      const fallback = path.join(__dirname, 'public', 'home.html');
-      if (fs.existsSync(fallback)) {
-        return res.sendFile(fallback);
-      }
-      return res.status(500).send('Homepage template not found.');
-    } catch (e) {
-      console.error('Homepage render error:', e);
-      return res.status(500).send('Homepage error.');
+  // Render homepage if the template exists; otherwise fall back to a static HTML file.
+  // This avoids "Failed to lookup view" crashes if the views directory is missing in a deployment.
+  try {
+    const fs = require('fs');
+    const viewPath = path.join(__dirname, 'views', 'home.ejs');
+    if (fs.existsSync(viewPath)) {
+      return res.render('home');
     }
-  };
-
-  // If a user is logged in, destroy session so they must login again next time.
-  if (req.session) {
-    return req.session.destroy(() => {
-      // also clear cookie
-      res.clearCookie('connect.sid');
-      return renderHome();
-    });
+    const fallback = path.join(__dirname, 'public', 'home.html');
+    if (fs.existsSync(fallback)) {
+      return res.sendFile(fallback);
+    }
+    return res.status(500).send('Homepage template not found.');
+  } catch (e) {
+    console.error('Homepage render error:', e);
+    return res.status(500).send('Homepage error.');
   }
-
-  return renderHome();
-});
-
-// ✅ Home shortcut from dashboard: logs user out then takes them to homepage
-app.get('/home', (req, res) => {
-  if (!req.session) return res.redirect('/');
-
-  req.session.destroy(() => {
-    res.clearCookie('connect.sid');
-    return res.redirect('/');
-  });
 });
 
 // ✅ Dedicated health endpoint
